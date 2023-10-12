@@ -1,0 +1,13 @@
+title: "Example A"
+description: "This is an example case"
+type: "object"
+properties:
+    name:
+        type: string
+    age:
+        type: string
+    details:
+        type: object
+        properties:
+            address:
+                type: string
