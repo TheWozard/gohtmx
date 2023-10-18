@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/TheWozard/gojsox/component"
-	"gopkg.in/yaml.v2"
 )
 
 func main() {
@@ -45,7 +45,7 @@ type FileStore struct {
 }
 
 func (fs FileStore) Path(name string) string {
-	return filepath.Join(fs.BasePath, name+".yaml")
+	return filepath.Join(fs.BasePath, name+".json")
 }
 
 func (fs FileStore) Get(name string) (any, error) {
@@ -56,7 +56,7 @@ func (fs FileStore) Get(name string) (any, error) {
 		return nil, err
 	}
 	var data any
-	err = yaml.Unmarshal(raw, &data)
+	err = json.Unmarshal(raw, &data)
 	if err != nil {
 		return nil, fmt.Errorf("file store: failed to decode yaml %s: %w", filename, err)
 	}
@@ -66,7 +66,7 @@ func (fs FileStore) Get(name string) (any, error) {
 func (fs FileStore) Set(name string, data any) error {
 	filename := fs.Path(name)
 
-	raw, err := yaml.Marshal(data)
+	raw, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("file store: failed to encode yaml %s: %w", filename, err)
 	}
