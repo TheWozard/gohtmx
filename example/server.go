@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/TheWozard/gohtmx"
@@ -70,6 +71,7 @@ func StreamTab() gohtmx.Component {
 		SSEEventGenerator: func(ctx context.Context, c chan gohtmx.SSEEvent) {
 			rollTicker := time.NewTicker(5 * time.Second)
 			uptimeTicker := time.NewTicker(1 * time.Second)
+			memTicker := time.NewTicker(3 * time.Second)
 			r := rand.New(rand.NewSource(time.Now().Unix()))
 			roll := func() {
 				roll := r.Intn(20) + 1
@@ -90,8 +92,18 @@ func StreamTab() gohtmx.Component {
 					Data:  Tag("Uptime", fmt.Sprintf("%.fs", time.Since(start).Seconds()), "light"),
 				}
 			}
+			mem := func() {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+
+				c <- gohtmx.SSEEvent{
+					Event: "memory",
+					Data:  Tag("Memory", fmt.Sprintf("%.4f MiB", float64(m.Alloc)/1024./1024.), "light"),
+				}
+			}
 			roll()
 			tick()
+			mem()
 			for {
 				select {
 				case <-ctx.Done():
@@ -100,6 +112,8 @@ func StreamTab() gohtmx.Component {
 					roll()
 				case <-uptimeTicker.C:
 					tick()
+				case <-memTicker.C:
+					mem()
 				}
 			}
 		},
@@ -112,6 +126,7 @@ func StreamTab() gohtmx.Component {
 				Content: gohtmx.Fragment{
 					gohtmx.StreamTarget{Events: []string{"roll"}, Classes: []string{"control"}, Content: Tag("Loading", "0", "light")},
 					gohtmx.StreamTarget{Events: []string{"uptime"}, Classes: []string{"control"}, Content: Tag("Loading", "0", "light")},
+					gohtmx.StreamTarget{Events: []string{"memory"}, Classes: []string{"control"}, Content: Tag("Loading", "0", "light")},
 				}},
 		})),
 	}
