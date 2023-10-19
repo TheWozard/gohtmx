@@ -28,11 +28,11 @@ func (t Tabs) WriteTemplate(prefix string, w io.StringWriter) {
 		[]Attribute{
 			{"id", t.ID},
 		},
-		t.contents(prefix),
+		t.content(prefix),
 	}.WriteTemplate(prefix, w)
 }
 
-func (t Tabs) contents(prefix string) Component {
+func (t Tabs) content(prefix string) Component {
 	target := "#" + t.ID
 
 	tags := Fragment{}
@@ -84,7 +84,7 @@ func (t Tabs) contents(prefix string) Component {
 }
 
 func (t Tabs) LoadMux(prefix string, m *http.ServeMux) {
-	tabTemplate := BuildTemplate(t.ID, prefix, t.contents(prefix))
+	tabTemplate := BuildTemplate(t.ID, prefix, t.content(prefix))
 	// All the logic is in the template itself.
 	m.Handle(prefix+"/", TemplateHandler{Template: tabTemplate})
 	for _, tab := range t.Tabs {
@@ -102,8 +102,8 @@ type Tab struct {
 	Value string
 	// Tag represents the Component that should be rendered for this tabs tag.
 	Tag Component
-	// Contents represents the Component to render for this tab.
-	Contents Component
+	// Content represents the Component to render for this tab.
+	Content Component
 }
 
 // Path returns the path for this tab.
@@ -117,10 +117,10 @@ func (t Tab) Condition(prefix string) string {
 	return fmt.Sprintf(`or (eq .Path "%s") (hasPrefix .Path "%s/")`, path, path)
 }
 
-// IfCondition wraps the passed contents in a template if condition.
+// IfCondition wraps the passed content in a template if condition.
 // TODO: Hack in the best of case.
-func (t Tab) IfCondition(prefix string, contents string) string {
-	return fmt.Sprintf(`{{if %s}}%s{{end}}`, t.Condition(prefix), contents)
+func (t Tab) IfCondition(prefix string, content string) string {
+	return fmt.Sprintf(`{{if %s}}%s{{end}}`, t.Condition(prefix), content)
 }
 
 // HTMXAttributes the standard HTMX Attributes required to move to this tab.
@@ -132,14 +132,14 @@ func (t Tab) HTMXAttributes(prefix string, target string) []Attribute {
 	}
 }
 
-// AsCondition converts the tab.Contents to a TemplateCondition to make it conditionally render on init.
+// AsCondition converts the tab.Content to a TemplateCondition to make it conditionally render on init.
 func (t Tab) AsCondition(prefix string, target string) TemplateCondition {
 	return TemplateCondition{
 		Condition: t.Condition(prefix),
-		Content:   At{t.Path(prefix), t.Contents},
+		Content:   At{t.Path(prefix), t.Content},
 	}
 }
 
 func (t Tab) LoadMux(prefix string, m *http.ServeMux) {
-	t.Contents.LoadMux(t.Path(prefix), m)
+	t.Content.LoadMux(t.Path(prefix), m)
 }

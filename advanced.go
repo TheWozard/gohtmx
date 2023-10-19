@@ -11,8 +11,8 @@ import (
 type Collapsible struct {
 	// Label is the text to be displayed as a label. "" removes the label.
 	Label string
-	// Contents is the content of the FieldSet. This may be a Fragment.
-	Contents Component
+	// Content is the content of the FieldSet. This may be a Fragment.
+	Content Component
 	// Open is the initial state of the collapsed field when the page is loaded.
 	Open bool
 	// TODO:
@@ -37,7 +37,7 @@ func (c Collapsible) writeTemplate(prefix string, w io.StringWriter, open bool) 
 		Content: Raw(c.Label),
 	}}
 	if open {
-		frag = append(frag, c.Contents)
+		frag = append(frag, c.Content)
 	}
 	Tag{
 		"div",

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,63 +31,22 @@ func main() {
 			ID:              "tabs",
 			Classes:         []string{"tabs", "is-centered"},
 			ActiveClasses:   []string{"is-active"},
-			DefaultRedirect: "One",
+			DefaultRedirect: "stream",
 			Tabs: []gohtmx.Tab{
 				{
-					Value: "One",
-					Tag:   gohtmx.Raw("One"),
-					Contents: gohtmx.Stream{
-						ID: "stream",
-						SSEEventGenerator: func(ctx context.Context, c chan gohtmx.SSEEvent) {
-							t := time.NewTicker(1 * time.Second)
-							c <- gohtmx.SSEEvent{
-								Data: gohtmx.Raw(time.Now().Format(time.RFC3339)),
-							}
-							for {
-								select {
-								case <-ctx.Done():
-									return
-								case <-t.C:
-									c <- gohtmx.SSEEvent{
-										Data: gohtmx.Raw(time.Now().Format(time.RFC3339)),
-									}
-								}
-							}
-						},
-						Content: gohtmx.StreamTarget{},
-					},
+					Value:   "stream",
+					Tag:     gohtmx.Raw("Stream"),
+					Content: StreamTab(),
 				},
 				{
-					Value:    "Two",
-					Tag:      gohtmx.Raw("Two"),
-					Contents: gohtmx.Raw("Tab Two"),
+					Value:   "form",
+					Tag:     gohtmx.Raw("Form"),
+					Content: Box(gohtmx.Raw("TODO")),
 				},
 				{
-					Value: "Three",
-					Tag:   gohtmx.Raw("Three"),
-					Contents: gohtmx.Tabs{
-						ID:              "tabs2",
-						Classes:         []string{"tabs", "is-centered"},
-						ActiveClasses:   []string{"is-active"},
-						DefaultRedirect: "Foo",
-						Tabs: []gohtmx.Tab{
-							{
-								Value:    "Foo",
-								Tag:      gohtmx.Raw("Foo"),
-								Contents: gohtmx.Raw("Foo"),
-							},
-							{
-								Value:    "Bar",
-								Tag:      gohtmx.Raw("Bar"),
-								Contents: gohtmx.Raw("Bar"),
-							},
-							{
-								Value:    "Foobar",
-								Tag:      gohtmx.Raw("Both"),
-								Contents: gohtmx.Raw("Foobar"),
-							},
-						},
-					},
+					Value:   "recursive",
+					Tag:     gohtmx.Raw("Recursive"),
+					Content: RecursiveTab(),
 				},
 			},
 		},
@@ -101,6 +61,127 @@ func main() {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}).ListenAndServe())
+}
+
+func StreamTab() gohtmx.Component {
+	start := time.Now()
+	return gohtmx.Stream{
+		ID: "stream",
+		SSEEventGenerator: func(ctx context.Context, c chan gohtmx.SSEEvent) {
+			rollTicker := time.NewTicker(5 * time.Second)
+			uptimeTicker := time.NewTicker(1 * time.Second)
+			r := rand.New(rand.NewSource(time.Now().Unix()))
+			roll := func() {
+				roll := r.Intn(20) + 1
+				color := "light"
+				if roll == 20 {
+					color = "success"
+				} else if roll == 1 {
+					color = "danger"
+				}
+				c <- gohtmx.SSEEvent{
+					Event: "roll",
+					Data:  Tag("Roll", fmt.Sprintf("%.d", roll), color),
+				}
+			}
+			tick := func() {
+				c <- gohtmx.SSEEvent{
+					Event: "uptime",
+					Data:  Tag("Uptime", fmt.Sprintf("%.fs", time.Since(start).Seconds()), "light"),
+				}
+			}
+			roll()
+			tick()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-rollTicker.C:
+					roll()
+				case <-uptimeTicker.C:
+					tick()
+				}
+			}
+		},
+		Content: Box(Content(gohtmx.Fragment{
+			gohtmx.Tag{Name: "h3", Content: gohtmx.Raw("Streams")},
+			gohtmx.Tag{Name: "p", Content: gohtmx.Raw("The following is an example of using Server Side Event streams to create self updating UIs. Each of the following tags are updated independently and push as a SSE from the server.")},
+			gohtmx.Tag{Name: "div", Attributes: []gohtmx.Attribute{
+				{Name: "class", Value: "field is-grouped is-grouped-multiline"},
+			},
+				Content: gohtmx.Fragment{
+					gohtmx.StreamTarget{Events: []string{"roll"}, Classes: []string{"control"}, Content: Tag("Loading", "0", "light")},
+					gohtmx.StreamTarget{Events: []string{"uptime"}, Classes: []string{"control"}, Content: Tag("Loading", "0", "light")},
+				}},
+		})),
+	}
+}
+
+func RecursiveTab() gohtmx.Component {
+	return gohtmx.Tabs{
+		ID:              "tabs-recursive",
+		Classes:         []string{"tabs", "is-centered"},
+		ActiveClasses:   []string{"is-active"},
+		DefaultRedirect: "foo",
+		Tabs: []gohtmx.Tab{
+			{
+				Value:   "foo",
+				Tag:     gohtmx.Raw("Foo"),
+				Content: Box(gohtmx.Raw("Foo")),
+			},
+			{
+				Value:   "bar",
+				Tag:     gohtmx.Raw("Bar"),
+				Content: Box(gohtmx.Raw("Bar")),
+			},
+			{
+				Value:   "foobar",
+				Tag:     gohtmx.Raw("Both"),
+				Content: Box(gohtmx.Raw("Foobar")),
+			},
+		},
+	}
+}
+
+func Box(c gohtmx.Component) gohtmx.Component {
+	return gohtmx.Tag{
+		Name: "div",
+		Attributes: []gohtmx.Attribute{
+			{Name: "class", Value: "box"},
+			{Name: "style", Value: "max-width: 500px;margin: auto;"},
+		},
+		Content: c,
+	}
+}
+
+func Content(c gohtmx.Component) gohtmx.Component {
+	return gohtmx.Tag{
+		Name: "div",
+		Attributes: []gohtmx.Attribute{
+			{Name: "class", Value: "content"},
+		},
+		Content: c,
+	}
+}
+
+func Tag(prefix, suffix, color string) gohtmx.Component {
+	return gohtmx.Tag{
+		Name: "div", Attributes: []gohtmx.Attribute{
+			{Name: "class", Value: "tags has-addons"},
+		},
+		Content: gohtmx.Fragment{
+			gohtmx.Tag{
+				Name:       "span",
+				Attributes: []gohtmx.Attribute{{Name: "class", Value: "tag is-dark"}},
+				Content:    gohtmx.Raw(prefix),
+			},
+			gohtmx.Tag{
+				Name:       "span",
+				Attributes: []gohtmx.Attribute{{Name: "class", Value: "tag is-" + color}},
+				Content:    gohtmx.Raw(suffix),
+			},
+		},
+	}
 }
 
 type Store interface {

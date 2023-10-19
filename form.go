@@ -71,12 +71,12 @@ func (i Input) LoadMux(_ string, _ *http.ServeMux) {
 type FieldSet struct {
 	// Label is the text to be displayed as a label. "" removes the label.
 	Label string
-	// Contents is the content of the FieldSet. This may be a Fragment.
-	Contents Component
+	// Content is the content of the FieldSet. This may be a Fragment.
+	Content Component
 }
 
 func (fs FieldSet) WriteTemplate(prefix string, w io.StringWriter) {
-	frag := Fragment{fs.Contents}
+	frag := Fragment{fs.Content}
 	if fs.Label != "" {
 		frag = append(Fragment{Tag{
 			"legend",
