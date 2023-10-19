@@ -1,6 +1,7 @@
 package component
 
 import (
+	"html/template"
 	"io"
 	"net/http"
 	"strings"
@@ -13,27 +14,40 @@ const (
 
 // Component defines the requirements of a component of the UI.
 type Component interface {
-	WriteTemplate(io.StringWriter)
-	LoadMux(*http.ServeMux)
+	WriteTemplate(prefix string, w io.StringWriter)
+	LoadMux(prefix string, m *http.ServeMux)
 }
 
 // Fragment defines a slice of Component that can be used as a single Component.
 type Fragment []Component
 
-func (f Fragment) WriteTemplate(w io.StringWriter) {
+func (f Fragment) WriteTemplate(prefix string, w io.StringWriter) {
 	for _, frag := range f {
-		frag.WriteTemplate(w)
+		frag.WriteTemplate(prefix, w)
 	}
 }
 
-func (f Fragment) LoadMux(m *http.ServeMux) {
+func (f Fragment) LoadMux(prefix string, m *http.ServeMux) {
 	for _, frag := range f {
-		frag.LoadMux(m)
+		frag.LoadMux(prefix, m)
 	}
 }
 
-func BuildBytes(c Component) []byte {
-	var close strings.Builder
-	c.WriteTemplate(&close)
-	return []byte(close.String())
+// BuildBytes convenience function for converting a Component to bytes at a given prefix.
+func BuildBytes(prefix string, c Component) []byte {
+	var builder strings.Builder
+	c.WriteTemplate(prefix, &builder)
+	return []byte(builder.String())
+}
+
+func BuildTemplate(name, prefix string, c Component) *template.Template {
+	var builder strings.Builder
+	c.WriteTemplate(prefix, &builder)
+	tmp, err := template.New(name).Funcs(template.FuncMap{
+		"hasPrefix": strings.HasPrefix,
+	}).Parse(builder.String())
+	if err != nil {
+		panic(err)
+	}
+	return tmp
 }

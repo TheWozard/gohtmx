@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,19 +10,86 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TheWozard/gojsox/component"
+	. "github.com/TheWozard/gojsox/component"
 )
 
 func main() {
 	// store := FileStore{BasePath: "./data/"}
 
 	mux := http.NewServeMux()
-	err := component.LoadComponent(mux, component.Page{
-		Header: component.Fragment{
-			component.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6"></script>`),
-			component.Raw(`<script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>`),
+	err := ServeComponent("/", mux, Document{
+		Header: Fragment{
+			Raw(`<meta charset="utf-8">`),
+			Raw(`<meta name="viewport" content="width=device-width, initial-scale=1">`),
+			Raw(`<title>Example</title>`),
+			Raw(`<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`),
+			Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
+			Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/ext/sse.js"></script>`),
 		},
-		Body: nil,
+		Body: Tabs{
+			ID:              "tabs",
+			Classes:         []string{"tabs", "is-centered"},
+			ActiveClasses:   []string{"is-active"},
+			DefaultRedirect: "One",
+			Tabs: []Tab{
+				{
+					Value: "One",
+					Tag:   Raw("One"),
+					Contents: Stream{
+						ID: "stream",
+						SSEEventGenerator: func(ctx context.Context, c chan SSEEvent) {
+							t := time.NewTicker(1 * time.Second)
+							c <- SSEEvent{
+								Data: Raw(time.Now().Format(time.RFC3339)),
+							}
+							for {
+								select {
+								case <-ctx.Done():
+									return
+								case <-t.C:
+									c <- SSEEvent{
+										Data: Raw(time.Now().Format(time.RFC3339)),
+									}
+								}
+							}
+						},
+						Content: StreamTarget{},
+					},
+				},
+				{
+					Value:    "Two",
+					Tag:      Raw("Two"),
+					Contents: Raw("Tab Two"),
+				},
+				{
+					Value: "Three",
+					Tag:   Raw("Three"),
+					Contents: Tabs{
+						ID:              "tabs2",
+						Classes:         []string{"tabs", "is-centered"},
+						ActiveClasses:   []string{"is-active"},
+						DefaultRedirect: "Foo",
+						Tabs: []Tab{
+							{
+								Value:    "Foo",
+								Tag:      Raw("Foo"),
+								Contents: Raw("Foo"),
+							},
+							{
+								Value:    "Bar",
+								Tag:      Raw("Bar"),
+								Contents: Raw("Bar"),
+							},
+							{
+								Value:    "Foobar",
+								Tag:      Raw("Both"),
+								Contents: Raw("Foobar"),
+							},
+						},
+					},
+				},
+			},
+		},
 	})
 	if err != nil {
 		log.Fatal(err)

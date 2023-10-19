@@ -23,11 +23,11 @@ func (c Collapsible) Path(open bool) string {
 	return actionPathPrefix + "/" + c.Label + "/" + strconv.FormatBool(open)
 }
 
-func (c Collapsible) WriteTemplate(w io.StringWriter) {
-	c.writeTemplate(w, c.Open)
+func (c Collapsible) WriteTemplate(prefix string, w io.StringWriter) {
+	c.writeTemplate(prefix, w, c.Open)
 }
 
-func (c Collapsible) writeTemplate(w io.StringWriter, open bool) {
+func (c Collapsible) writeTemplate(prefix string, w io.StringWriter, open bool) {
 	frag := Fragment{Tag{
 		Name: "button",
 		Attributes: []Attribute{
@@ -45,15 +45,15 @@ func (c Collapsible) writeTemplate(w io.StringWriter, open bool) {
 			{Name: "id", Value: c.Label},
 		},
 		frag,
-	}.WriteTemplate(w)
+	}.WriteTemplate(prefix, w)
 }
 
-func (c Collapsible) LoadMux(mux *http.ServeMux) {
+func (c Collapsible) LoadMux(prefix string, mux *http.ServeMux) {
 	// Cache the templates
 	var open strings.Builder
 	var closed strings.Builder
-	c.writeTemplate(&open, true)
-	c.writeTemplate(&closed, false)
+	c.writeTemplate(prefix, &open, true)
+	c.writeTemplate(prefix, &closed, false)
 	openCache := open.String()
 	closedCache := closed.String()
 
@@ -79,11 +79,11 @@ func (s Selection) Path() string {
 	return actionPathPrefix + "/" + s.Label
 }
 
-func (s Selection) WriteTemplate(w io.StringWriter) {
-	s.writeTemplate(w, s.Options[0])
+func (s Selection) WriteTemplate(prefix string, w io.StringWriter) {
+	s.writeTemplate(prefix, w, s.Options[0])
 }
 
-func (s Selection) writeTemplate(w io.StringWriter, option SelectionOption) {
+func (s Selection) writeTemplate(prefix string, w io.StringWriter, option SelectionOption) {
 	options := Fragment{}
 	for _, o := range s.Options {
 		tag := Tag{
@@ -112,14 +112,14 @@ func (s Selection) writeTemplate(w io.StringWriter, option SelectionOption) {
 			{Name: "id", Value: s.Label},
 		},
 		frag,
-	}.WriteTemplate(w)
+	}.WriteTemplate(prefix, w)
 }
 
-func (s Selection) LoadMux(mux *http.ServeMux) {
+func (s Selection) LoadMux(prefix string, mux *http.ServeMux) {
 	templates := map[string]*template.Template{}
 	for _, option := range s.Options {
 		var body strings.Builder
-		s.writeTemplate(&body, option)
+		s.writeTemplate(prefix, &body, option)
 		templates[option.Name], _ = template.New("resp").Parse(body.String())
 	}
 
@@ -129,36 +129,5 @@ func (s Selection) LoadMux(mux *http.ServeMux) {
 		if temp, ok := templates[value]; ok {
 			_ = temp.Execute(w, nil)
 		}
-	})
-}
-
-type Stream struct {
-	Name              string
-	Events            []string
-	SSEEventGenerator SSEEventGenerator
-}
-
-func (s Stream) Path() string {
-	return severSideEventPrefix + "/" + s.Name
-}
-
-func (s Stream) WriteTemplate(w io.StringWriter) {
-	frag := Fragment{}
-	for _, event := range s.Events {
-		frag = append(frag, Tag{"div", []Attribute{{"sse-swap", event}, {"hx-swap", "afterbegin"}}, nil})
-	}
-	Tag{
-		Name: "div",
-		Attributes: []Attribute{
-			{Name: "hx-ext", Value: "sse"},
-			{Name: "sse-connect", Value: s.Path()},
-		},
-		Content: frag,
-	}.WriteTemplate(w)
-}
-
-func (s Stream) LoadMux(mux *http.ServeMux) {
-	mux.Handle(s.Path(), SSEHandler{
-		EventConnector: s.SSEEventGenerator,
 	})
 }

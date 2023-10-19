@@ -26,7 +26,7 @@ type Input struct {
 	Classes []string
 }
 
-func (i Input) WriteTemplate(w io.StringWriter) {
+func (i Input) WriteTemplate(prefix string, w io.StringWriter) {
 	typ := i.Type
 	if i.Type == "" {
 		typ = InputTypeText
@@ -62,10 +62,10 @@ func (i Input) WriteTemplate(w io.StringWriter) {
 			{Name: "class", Value: "form-group"},
 		},
 		frag,
-	}.WriteTemplate(w)
+	}.WriteTemplate(prefix, w)
 }
 
-func (i Input) LoadMux(_ *http.ServeMux) {
+func (i Input) LoadMux(_ string, _ *http.ServeMux) {
 }
 
 type FieldSet struct {
@@ -75,7 +75,7 @@ type FieldSet struct {
 	Contents Component
 }
 
-func (fs FieldSet) WriteTemplate(w io.StringWriter) {
+func (fs FieldSet) WriteTemplate(prefix string, w io.StringWriter) {
 	frag := Fragment{fs.Contents}
 	if fs.Label != "" {
 		frag = append(Fragment{Tag{
@@ -88,10 +88,10 @@ func (fs FieldSet) WriteTemplate(w io.StringWriter) {
 		"fieldset",
 		[]Attribute{},
 		frag,
-	}.WriteTemplate(w)
+	}.WriteTemplate(prefix, w)
 }
 
-func (fs FieldSet) LoadMux(_ *http.ServeMux) {
+func (fs FieldSet) LoadMux(_ string, _ *http.ServeMux) {
 }
 
 type Button struct {
@@ -100,22 +100,22 @@ type Button struct {
 	Action  http.Handler
 }
 
-func (b Button) Path() string {
-	return fmt.Sprintf("%s/%s", actionPathPrefix, b.Label)
+func (b Button) path(prefix string) string {
+	return fmt.Sprintf("%s/%s/%s", prefix, actionPathPrefix, b.Label)
 }
 
-func (b Button) WriteTemplate(w io.StringWriter) {
+func (b Button) WriteTemplate(prefix string, w io.StringWriter) {
 	Tag{"button", []Attribute{
 		{Name: "class", Value: strings.Join(b.Classes, " ")},
-		{Name: "hx-get", Value: b.Path()},
-	}, nil}.WriteTemplate(w)
+		{Name: "hx-get", Value: b.path(prefix)},
+	}, nil}.WriteTemplate(prefix, w)
 }
 
-func (b Button) LoadMux(m *http.ServeMux) {
-	m.Handle(b.Path(), b.Action)
+func (b Button) LoadMux(prefix string, m *http.ServeMux) {
+	m.Handle(b.path(prefix), b.Action)
 
-	var closeCache = BuildBytes(b)
-	m.HandleFunc(fmt.Sprintf("%s/close", b.Path()), func(w http.ResponseWriter, r *http.Request) {
+	var closeCache = BuildBytes(prefix, b)
+	m.HandleFunc(fmt.Sprintf("%s/close", b.path(prefix)), func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(closeCache)
 	})
 }

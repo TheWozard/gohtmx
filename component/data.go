@@ -1,15 +1,31 @@
 package component
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 type dataKeyType int
 
 const dataKey dataKeyType = iota
 
-func DataOnContext(ctx context.Context, data any) context.Context {
+type TemplateData struct {
+	Path string
+}
+
+func TemplateDataOnContext(ctx context.Context, data TemplateData) context.Context {
 	return context.WithValue(ctx, dataKey, data)
 }
 
+func TemplateDataFromRequestOnContext(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, dataKey, TemplateData{
+		Path: r.URL.Path,
+	})
+}
+
 func DataFromContext(ctx context.Context) any {
-	return ctx.Value(dataKey)
+	if data, ok := ctx.Value(dataKey).(TemplateData); ok {
+		return data
+	}
+	return TemplateData{}
 }
