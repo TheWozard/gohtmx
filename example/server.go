@@ -10,80 +10,80 @@ import (
 	"path/filepath"
 	"time"
 
-	. "github.com/TheWozard/gojsox/component"
+	"github.com/TheWozard/gohtmx"
 )
 
 func main() {
 	// store := FileStore{BasePath: "./data/"}
 
 	mux := http.NewServeMux()
-	err := ServeComponent("/", mux, Document{
-		Header: Fragment{
-			Raw(`<meta charset="utf-8">`),
-			Raw(`<meta name="viewport" content="width=device-width, initial-scale=1">`),
-			Raw(`<title>Example</title>`),
-			Raw(`<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`),
-			Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
-			Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/ext/sse.js"></script>`),
+	err := gohtmx.ServeComponent("/", mux, gohtmx.Document{
+		Header: gohtmx.Fragment{
+			gohtmx.Raw(`<meta charset="utf-8">`),
+			gohtmx.Raw(`<meta name="viewport" content="width=device-width, initial-scale=1">`),
+			gohtmx.Raw(`<title>Example</title>`),
+			gohtmx.Raw(`<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`),
+			gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
+			gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/ext/sse.js"></script>`),
 		},
-		Body: Tabs{
+		Body: gohtmx.Tabs{
 			ID:              "tabs",
 			Classes:         []string{"tabs", "is-centered"},
 			ActiveClasses:   []string{"is-active"},
 			DefaultRedirect: "One",
-			Tabs: []Tab{
+			Tabs: []gohtmx.Tab{
 				{
 					Value: "One",
-					Tag:   Raw("One"),
-					Contents: Stream{
+					Tag:   gohtmx.Raw("One"),
+					Contents: gohtmx.Stream{
 						ID: "stream",
-						SSEEventGenerator: func(ctx context.Context, c chan SSEEvent) {
+						SSEEventGenerator: func(ctx context.Context, c chan gohtmx.SSEEvent) {
 							t := time.NewTicker(1 * time.Second)
-							c <- SSEEvent{
-								Data: Raw(time.Now().Format(time.RFC3339)),
+							c <- gohtmx.SSEEvent{
+								Data: gohtmx.Raw(time.Now().Format(time.RFC3339)),
 							}
 							for {
 								select {
 								case <-ctx.Done():
 									return
 								case <-t.C:
-									c <- SSEEvent{
-										Data: Raw(time.Now().Format(time.RFC3339)),
+									c <- gohtmx.SSEEvent{
+										Data: gohtmx.Raw(time.Now().Format(time.RFC3339)),
 									}
 								}
 							}
 						},
-						Content: StreamTarget{},
+						Content: gohtmx.StreamTarget{},
 					},
 				},
 				{
 					Value:    "Two",
-					Tag:      Raw("Two"),
-					Contents: Raw("Tab Two"),
+					Tag:      gohtmx.Raw("Two"),
+					Contents: gohtmx.Raw("Tab Two"),
 				},
 				{
 					Value: "Three",
-					Tag:   Raw("Three"),
-					Contents: Tabs{
+					Tag:   gohtmx.Raw("Three"),
+					Contents: gohtmx.Tabs{
 						ID:              "tabs2",
 						Classes:         []string{"tabs", "is-centered"},
 						ActiveClasses:   []string{"is-active"},
 						DefaultRedirect: "Foo",
-						Tabs: []Tab{
+						Tabs: []gohtmx.Tab{
 							{
 								Value:    "Foo",
-								Tag:      Raw("Foo"),
-								Contents: Raw("Foo"),
+								Tag:      gohtmx.Raw("Foo"),
+								Contents: gohtmx.Raw("Foo"),
 							},
 							{
 								Value:    "Bar",
-								Tag:      Raw("Bar"),
-								Contents: Raw("Bar"),
+								Tag:      gohtmx.Raw("Bar"),
+								Contents: gohtmx.Raw("Bar"),
 							},
 							{
 								Value:    "Foobar",
-								Tag:      Raw("Both"),
-								Contents: Raw("Foobar"),
+								Tag:      gohtmx.Raw("Both"),
+								Contents: gohtmx.Raw("Foobar"),
 							},
 						},
 					},

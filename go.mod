@@ -1,3 +1,3 @@
-module github.com/TheWozard/gojsox
+module github.com/TheWozard/gohtmx
 
 go 1.21
