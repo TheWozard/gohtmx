@@ -1,4 +1,4 @@
-# gojsox
+# gohtmx
 
 A component library for building composable golang APIs using HTMX and html/template.
 
