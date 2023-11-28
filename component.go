@@ -3,51 +3,103 @@ package gohtmx
 import (
 	"html/template"
 	"io"
-	"net/http"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 const (
-	actionPathPrefix     = "/action"
-	severSideEventPrefix = "/sse"
+	actionPathPrefix     = "action"
+	severSideEventPrefix = "sse"
 )
 
-// Component defines the requirements of a component of the UI.
+// Component defines the requirements of a component of the UI
 type Component interface {
-	WriteTemplate(prefix string, w io.StringWriter)
-	LoadMux(prefix string, m *http.ServeMux)
+	// LoadTemplate defines what a component should be rendered as. Rendering itself is done using
+	// html/template and as such can include template information.
+	LoadTemplate(l *Location, w io.StringWriter)
+	// LoadMux defines how a component is interactive. Often LoadTemplate is called from LoadMux so
+	// a component can create a template of itself.
+	LoadMux(l *Location, m *mux.Router)
 }
 
-// Fragment defines a slice of Component that can be used as a single Component.
-type Fragment []Component
+// Location defines information about the current rendering location.
+type Location struct {
+	// PathPrefix defines the current prefix for a component to build requests from.
+	PathPrefix string
+	// DataPrefix defines the current prefix for relative data loading.
+	DataPrefix string
 
-func (f Fragment) WriteTemplate(prefix string, w io.StringWriter) {
-	for _, frag := range f {
-		frag.WriteTemplate(prefix, w)
+	// Template defines the base template to be cloned for LoadTemplate.
+	// This can be used to add custom functions or common templates to child components.
+	TemplateBase *template.Template
+}
+
+func (l *Location) Sanitize() {
+	l.PathPrefix = strings.TrimRight(l.PathPrefix, "/")
+	l.PathPrefix = strings.TrimRight(l.PathPrefix, ".")
+}
+
+func (l *Location) Path(segments ...string) string {
+	return l.PathPrefix + "/" + strings.Join(segments, "/")
+}
+
+func (l *Location) Data(segments ...string) string {
+	return l.DataPrefix + "." + strings.Join(segments, ".")
+}
+
+func (l *Location) AtPath(segments ...string) *Location {
+	return &Location{
+		PathPrefix:   l.Path(segments...),
+		DataPrefix:   l.DataPrefix,
+		TemplateBase: l.TemplateBase,
 	}
 }
 
-func (f Fragment) LoadMux(prefix string, m *http.ServeMux) {
-	for _, frag := range f {
-		frag.LoadMux(prefix, m)
+func (l *Location) AtData(segments ...string) *Location {
+	return &Location{
+		PathPrefix:   l.PathPrefix,
+		DataPrefix:   l.Data(segments...),
+		TemplateBase: l.TemplateBase,
 	}
 }
 
-// BuildBytes convenience function for converting a Component to bytes at a given prefix.
-func BuildBytes(prefix string, c Component) []byte {
+// BuildString builds a given component template at this location as a string.
+func (l *Location) BuildString(c Component) string {
 	var builder strings.Builder
-	c.WriteTemplate(prefix, &builder)
-	return []byte(builder.String())
+	c.LoadTemplate(l, &builder)
+	return builder.String()
 }
 
-func BuildTemplate(name, prefix string, c Component) *template.Template {
-	var builder strings.Builder
-	c.WriteTemplate(prefix, &builder)
-	tmp, err := template.New(name).Funcs(template.FuncMap{
-		"hasPrefix": strings.HasPrefix,
-	}).Parse(builder.String())
+// BuildString builds a given component template at this location as bytes.
+func (l *Location) BuildBytes(c Component) []byte {
+	return []byte(l.BuildString(c))
+}
+
+// BuildTemplate builds a given component template at this location to a template using the TemplateBase.
+func (l *Location) BuildTemplate(c Component) *template.Template {
+	tmp, err := l.TemplateBase.Clone()
+	if err != nil {
+		panic(err)
+	}
+	tmp, err = tmp.Parse(l.BuildString(c))
 	if err != nil {
 		panic(err)
 	}
 	return tmp
+}
+
+// Fragment defines a slice of Components that can be used as a single Component.
+type Fragment []Component
+
+func (f Fragment) LoadTemplate(l *Location, w io.StringWriter) {
+	for _, frag := range f {
+		frag.LoadTemplate(l, w)
+	}
+}
+
+func (f Fragment) LoadMux(l *Location, m *mux.Router) {
+	for _, frag := range f {
+		frag.LoadMux(l, m)
+	}
 }

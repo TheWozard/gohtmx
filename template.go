@@ -3,7 +3,8 @@ package gohtmx
 import (
 	"fmt"
 	"io"
-	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 // TemplateDefinition Component implementation of the golang template/html for {{define "<Name>"}}<Component>{{End}}
@@ -14,16 +15,16 @@ type TemplateDefinition struct {
 	Content Component
 }
 
-func (td TemplateDefinition) WriteTemplate(prefix string, w io.StringWriter) {
+func (td TemplateDefinition) LoadTemplate(l *Location, w io.StringWriter) {
 	_, _ = w.WriteString(fmt.Sprintf(`{{define "%s"}}`, td.Name))
 	if td.Content != nil {
-		td.Content.WriteTemplate(prefix, w)
+		td.Content.LoadTemplate(l, w)
 	}
 	_, _ = w.WriteString(`{{end}}`)
 }
 
-func (td TemplateDefinition) LoadMux(prefix string, m *http.ServeMux) {
-	td.Content.LoadMux(prefix, m)
+func (td TemplateDefinition) LoadMux(l *Location, m *mux.Router) {
+	td.Content.LoadMux(l, m)
 }
 
 // TemplateBlock Component implementation of the golang template/html for {{block "<Name>" <Path>}}<Default>{{end}}
@@ -43,16 +44,16 @@ func (tb TemplateBlock) path() string {
 	return tb.Path
 }
 
-func (tb TemplateBlock) WriteTemplate(prefix string, w io.StringWriter) {
+func (tb TemplateBlock) LoadTemplate(l *Location, w io.StringWriter) {
 	_, _ = w.WriteString(fmt.Sprintf(`{{template "%s" %s}}`, tb.Name, tb.path()))
 	if tb.Default != nil {
-		tb.Default.WriteTemplate(prefix, w)
+		tb.Default.LoadTemplate(l, w)
 	}
 	_, _ = w.WriteString(`{{end}}`)
 }
 
-func (tb TemplateBlock) LoadMux(prefix string, m *http.ServeMux) {
-	tb.Default.LoadMux(prefix, m)
+func (tb TemplateBlock) LoadMux(l *Location, m *mux.Router) {
+	tb.Default.LoadMux(l, m)
 }
 
 // TemplateCondition represents a single if condition in a TemplateConditionSet.
@@ -65,25 +66,25 @@ type TemplateCondition struct {
 	Content Component
 }
 
-func (tc TemplateCondition) WriteTemplate(prefix string, w io.StringWriter) {
+func (tc TemplateCondition) LoadTemplate(l *Location, w io.StringWriter) {
 	if tc.Condition == "" {
-		tc.Content.WriteTemplate(prefix, w)
+		tc.Content.LoadTemplate(l, w)
 	} else {
 		_, _ = w.WriteString(fmt.Sprintf(`{{if %s}}`, tc.Condition))
-		tc.Content.WriteTemplate(prefix, w)
+		tc.Content.LoadTemplate(l, w)
 		_, _ = w.WriteString(`{{end}}`)
 	}
 }
 
-func (tc TemplateCondition) LoadMux(prefix string, m *http.ServeMux) {
-	tc.Content.LoadMux(prefix, m)
+func (tc TemplateCondition) LoadMux(l *Location, m *mux.Router) {
+	tc.Content.LoadMux(l, m)
 }
 
 // TemplateConditionSet is a slice that represents an If/IfElse/Else template.
 // TemplateCondition.Conditions are evaluated in order. Any empty TemplateCondition.Condition are grouped under a single else.
 type TemplateConditionSet []TemplateCondition
 
-func (tcs TemplateConditionSet) WriteTemplate(prefix string, w io.StringWriter) {
+func (tcs TemplateConditionSet) LoadTemplate(l *Location, w io.StringWriter) {
 	if len(tcs) == 0 {
 		return
 	}
@@ -100,20 +101,20 @@ func (tcs TemplateConditionSet) WriteTemplate(prefix string, w io.StringWriter) 
 		} else {
 			_, _ = w.WriteString(fmt.Sprintf(`{{else if %s}}`, condition.Condition))
 		}
-		condition.Content.WriteTemplate(prefix, w)
+		condition.Content.LoadTemplate(l, w)
 	}
 	if first {
 		// No other conditions so no need to add template info.
-		elses.WriteTemplate(prefix, w)
+		elses.LoadTemplate(l, w)
 		return
 	}
 	_, _ = w.WriteString(`{{else}}`)
-	elses.WriteTemplate(prefix, w)
+	elses.LoadTemplate(l, w)
 	_, _ = w.WriteString(`{{end}}`)
 }
 
-func (tcs TemplateConditionSet) LoadMux(prefix string, m *http.ServeMux) {
+func (tcs TemplateConditionSet) LoadMux(l *Location, m *mux.Router) {
 	for _, condition := range tcs {
-		condition.Content.LoadMux(prefix, m)
+		condition.Content.LoadMux(l, m)
 	}
 }

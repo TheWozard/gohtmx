@@ -3,97 +3,75 @@ package gohtmx
 import (
 	"fmt"
 	"io"
-	"net/http"
-	"strings"
+
+	"github.com/gorilla/mux"
 )
 
-// Tabs Component for rendering a list of Tab Components.
-type Tabs struct {
+// TabSelector Component for triggering the switching of a TabTarget.
+type TabSelector struct {
 	// The unique ID of this Tabs Component used to for HTMX targeting.
 	ID string
-	// Tabs is a slice of Tab elements to be rendered.
-	Tabs []Tab
-	// DefaultRedirect if not empty will automatically redirect to the Tab of Value equal to Default Redirect
-	// If the tab is missing DefaultRedirect will be ignored.
-	DefaultRedirect string
+	// The tab to be rendered to the TabTarget when this TabSelector is clicked.
+	Tab Tab
 	// Classes to be added to the wrapping div element.
 	Classes []string
-	// ActiveClasses to be added to the Active tab element.
-	ActiveClasses []string
+
+	Content Component
 }
 
-func (t Tabs) WriteTemplate(prefix string, w io.StringWriter) {
-	Tag{
-		"div",
-		[]Attribute{
-			{"id", t.ID},
+func (ts TabSelector) LoadTemplate(l *Location, w io.StringWriter) {
+	A{
+		Classes: ts.Classes,
+		Attr: []Attr{
+			{Name: "hx-get", Value: ts.Tab.Path(l)},
+			{Name: "hx-target", Value: "#" + ts.ID},
+			{Name: "hx-push-url", Value: "true"},
 		},
-		t.content(prefix),
-	}.WriteTemplate(prefix, w)
+		Content: ts.Content,
+	}.LoadTemplate(l, w)
 }
 
-func (t Tabs) content(prefix string) Component {
-	target := "#" + t.ID
+func (ts TabSelector) LoadMux(l *Location, m *mux.Router) {
+	m.Handle(l.Path(ts.Tab.Value), TemplateHandler{Template: l.BuildTemplate(ts.Tab.Content)})
+	ts.Content.LoadMux(l, m)
+}
 
-	tags := Fragment{}
-	conditions := TemplateConditionSet{}
-	for _, tab := range t.Tabs {
-		tags = append(tags, Tag{"li",
-			[]Attribute{
-				{"class", tab.IfCondition(prefix, strings.Join(t.ActiveClasses, " "))},
-			},
-			Tag{
-				"a",
-				tab.HTMXAttributes(prefix, target),
-				tab.Tag,
-			},
-		})
-		conditions = append(conditions, tab.AsCondition(prefix, target))
-	}
+// TabTarget Component for target location to render tabs. Includes features to pre-rendering tabs.
+// Will not call LoadMux on any tab contents. That is done by the TabSelector
+type TabTarget struct {
+	ID      string
+	Classes []string
 
-	if t.DefaultRedirect != "" {
-		for _, tab := range t.Tabs {
-			if tab.Value == t.DefaultRedirect {
-				conditions = append(conditions, TemplateCondition{
-					Content: Tag{
-						"div",
-						append(tab.HTMXAttributes(prefix, target),
-							Attribute{"hx-trigger", "load"},
-						),
-						nil,
+	Tabs         []Tab
+	AutoRedirect string
+}
+
+func (tt TabTarget) LoadTemplate(l *Location, w io.StringWriter) {
+	contents := make(TemplateConditionSet, len(tt.Tabs))
+	for i, tab := range tt.Tabs {
+		contents[i] = tab.AsCondition(l)
+		if tab.Value == tt.AutoRedirect {
+			contents = append(contents, TemplateCondition{
+				Content: Div{
+					Attr: []Attr{
+						{Name: "hx-get", Value: tab.Path(l)},
+						{Name: "hx-target", Value: "#" + tt.ID},
+						{Name: "hx-push-url", Value: "true"},
+						{Name: "hx-trigger", Value: "load"},
 					},
-				})
-			}
+				},
+			})
 		}
 	}
-
-	return Fragment{
-		Tag{
-			"div",
-			[]Attribute{
-				{"class", strings.Join(t.Classes, " ")},
-			},
-			Tag{
-				"ul",
-				[]Attribute{},
-				tags,
-			},
-		},
-		conditions,
-	}
+	Div{
+		ID:      tt.ID,
+		Classes: tt.Classes,
+		Content: contents,
+	}.LoadTemplate(l, w)
 }
 
-func (t Tabs) LoadMux(prefix string, m *http.ServeMux) {
-	tabTemplate := BuildTemplate(t.ID, prefix, t.content(prefix))
-	// All the logic is in the template itself.
-	m.Handle(prefix+"/", TemplateHandler{Template: tabTemplate})
-	for _, tab := range t.Tabs {
-		// We register each tab path "prefix/value" so if the content contains a tab as well
-		// when it registers "prefix/value/" golang doesn't auto redirect our requests.
-		// TODO: This is another indicator to get a better MUX.
-		m.Handle(tab.Path(prefix), TemplateHandler{Template: tabTemplate})
-		tab.LoadMux(prefix, m)
-	}
+func (tt TabTarget) LoadMux(l *Location, m *mux.Router) {
+
 }
 
 // Tab represents a common handler for tab style components.
@@ -107,39 +85,25 @@ type Tab struct {
 }
 
 // Path returns the path for this tab.
-func (t Tab) Path(prefix string) string {
-	return fmt.Sprintf("%s/%s", prefix, strings.ToLower(t.Value))
+func (t Tab) Path(l *Location) string {
+	return l.Path(t.Value)
 }
 
 // Condition returns the template condition that would match this tab.
-func (t Tab) Condition(prefix string) string {
-	path := t.Path(prefix)
-	return fmt.Sprintf(`or (eq .Path "%s") (hasPrefix .Path "%s/")`, path, path)
+func (t Tab) Condition(l *Location) string {
+	path := t.Path(l)
+	return fmt.Sprintf(`matchPath .path "%s/"`, path)
 }
 
-// IfCondition wraps the passed content in a template if condition.
-// TODO: Hack in the best of case.
-func (t Tab) IfCondition(prefix string, content string) string {
-	return fmt.Sprintf(`{{if %s}}%s{{end}}`, t.Condition(prefix), content)
-}
-
-// HTMXAttributes the standard HTMX Attributes required to move to this tab.
-func (t Tab) HTMXAttributes(prefix string, target string) []Attribute {
-	return []Attribute{
-		{"hx-get", t.Path(prefix)},
-		{"hx-target", target},
-		{"hx-push-url", "true"},
-	}
-}
-
-// AsCondition converts the tab.Content to a TemplateCondition to make it conditionally render on init.
-func (t Tab) AsCondition(prefix string, target string) TemplateCondition {
+// AsCondition converts the tab.Content to a TemplateCondition to make it conditionally render.
+func (t Tab) AsCondition(l *Location) TemplateCondition {
 	return TemplateCondition{
-		Condition: t.Condition(prefix),
-		Content:   At{t.Path(prefix), t.Content},
+		Condition: t.Condition(l),
+		Content:   At{Location: l, Content: t.Content},
 	}
 }
 
-func (t Tab) LoadMux(prefix string, m *http.ServeMux) {
-	t.Content.LoadMux(t.Path(prefix), m)
+// LoadMux attaches all of the Tabs context under the tabs Path.
+func (t Tab) LoadMux(l *Location, m *mux.Router) {
+	t.Content.LoadMux(l.AtPath(t.Value), m)
 }

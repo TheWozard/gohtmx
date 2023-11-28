@@ -2,21 +2,22 @@ package gohtmx
 
 import (
 	"io"
-	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 // At modifies the Prefix of the building template
 type At struct {
 	// Name is the action that is to be taken for this template.
-	Prefix string
+	Location *Location
 	// Content defines the Component this wraps.
 	Content Component
 }
 
-func (a At) WriteTemplate(prefix string, w io.StringWriter) {
-	a.Content.WriteTemplate(a.Prefix, w)
+func (a At) LoadTemplate(l *Location, w io.StringWriter) {
+	a.Content.LoadTemplate(a.Location, w)
 }
 
-func (a At) LoadMux(prefix string, m *http.ServeMux) {
-	a.Content.LoadMux(a.Prefix, m)
+func (a At) LoadMux(l *Location, m *mux.Router) {
+	a.Content.LoadMux(a.Location, m)
 }

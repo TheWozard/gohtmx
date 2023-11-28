@@ -43,3 +43,12 @@ func (th TemplateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+type ActionHandler struct {
+	Location *Location
+	Action   func() Component
+}
+
+func (ah ActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = fmt.Fprint(w, ah.Location.BuildString(ah.Action()))
+}

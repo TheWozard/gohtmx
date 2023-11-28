@@ -1,10 +1,12 @@
 package gohtmx
 
 import (
-	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 // Document the baseline component of an HTML document/page.
@@ -15,30 +17,25 @@ type Document struct {
 	Body Component
 }
 
-func (d Document) WriteTemplate(prefix string, w io.StringWriter) {
+func (d Document) LoadTemplate(l *Location, w io.StringWriter) {
 	Fragment{
 		Raw("<!DOCTYPE html>"),
-		Tag{"html", []Attribute{}, Fragment{
-			Tag{"head", []Attribute{}, d.Header},
-			Tag{"body", []Attribute{}, d.Body},
+		Tag{"html", []Attr{}, Fragment{
+			Tag{"head", []Attr{}, d.Header},
+			Tag{"body", []Attr{}, d.Body},
 		}},
-	}.WriteTemplate(prefix, w)
+	}.LoadTemplate(l, w)
 }
 
-func (d Document) LoadMux(prefix string, m *http.ServeMux) {
-	d.Body.LoadMux(prefix, m)
-}
+func (d Document) LoadMux(l *Location, m *mux.Router) {
+	body := l.BuildTemplate(d)
 
-// ServeComponent attaches the passed Component to the mux at the passed prefix.
-// All sub-Components will be attached as well under the passed prefix.
-func ServeComponent(prefix string, mux *http.ServeMux, c Component) error {
-	prefix = strings.TrimRight(prefix, "/")
-	body := BuildTemplate("body", prefix, c)
-
-	internal := http.NewServeMux()
-	c.LoadMux(prefix, internal)
-	mux.HandleFunc(fmt.Sprintf("%s/", prefix), func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(TemplateDataFromRequestOnContext(r.Context(), r))
+	internal := mux.NewRouter()
+	if d.Body != nil {
+		d.Body.LoadMux(l, internal)
+	}
+	m.PathPrefix(l.Path()).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(MergeDataToContext(r.Context(), TemplateDataFromRequest(r)))
 		// All non-HTMX/event-stream requests should serve as a SPA and loaded through the golang html/template.
 		if r.Header.Get("HX-Request") != "" || r.Header.Get("Accept") == "text/event-stream" {
 			internal.ServeHTTP(w, r)
@@ -46,5 +43,20 @@ func ServeComponent(prefix string, mux *http.ServeMux, c Component) error {
 			_ = body.Execute(w, DataFromContext(r.Context()))
 		}
 	})
-	return nil
+}
+
+func (d Document) Mount(path string, m *mux.Router) {
+	d.LoadMux(d.NewLocation(path), m)
+}
+
+func (d Document) NewLocation(path string) *Location {
+	return &Location{
+		PathPrefix: strings.TrimRight(path, "/"),
+		DataPrefix: "",
+		TemplateBase: template.New("base").Funcs(template.FuncMap{
+			"matchPath": func(match, prefix string) bool {
+				return match == prefix || strings.HasPrefix(match, prefix+"/")
+			},
+		}),
+	}
 }
