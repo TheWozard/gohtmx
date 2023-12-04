@@ -14,8 +14,8 @@ type At struct {
 	Content Component
 }
 
-func (a At) LoadTemplate(l *Location, w io.StringWriter) {
-	a.Content.LoadTemplate(a.Location, w)
+func (a At) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
+	a.Content.LoadTemplate(a.Location, t, w)
 }
 
 func (a At) LoadMux(l *Location, m *mux.Router) {

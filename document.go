@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Document the baseline component of an HTML document/page.
+// Document the baseline component of an HTML document.
 type Document struct {
 	// Header defines Component to be rendered in between the <head> tags
 	Header Component
@@ -17,18 +17,18 @@ type Document struct {
 	Body Component
 }
 
-func (d Document) LoadTemplate(l *Location, w io.StringWriter) {
+func (d Document) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Fragment{
 		Raw("<!DOCTYPE html>"),
 		Tag{"html", []Attr{}, Fragment{
 			Tag{"head", []Attr{}, d.Header},
-			Tag{"body", []Attr{}, d.Body},
+			Tag{"body", []Attr{{Name: "id", Value: "body"}}, d.Body},
 		}},
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (d Document) LoadMux(l *Location, m *mux.Router) {
-	body := l.BuildTemplate(d)
+	body := l.BuildTemplateHandler(d)
 
 	internal := mux.NewRouter()
 	if d.Body != nil {
@@ -40,7 +40,7 @@ func (d Document) LoadMux(l *Location, m *mux.Router) {
 		if r.Header.Get("HX-Request") != "" || r.Header.Get("Accept") == "text/event-stream" {
 			internal.ServeHTTP(w, r)
 		} else {
-			_ = body.Execute(w, DataFromContext(r.Context()))
+			body.ServeHTTP(w, r)
 		}
 	})
 }

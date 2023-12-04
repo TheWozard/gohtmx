@@ -11,7 +11,7 @@ import (
 // Raw defines the most generic Component that directly renders the string as HTML
 type Raw string
 
-func (r Raw) LoadTemplate(l *Location, w io.StringWriter) {
+func (r Raw) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	_, _ = w.WriteString(string(r))
 }
 
@@ -53,7 +53,7 @@ type Tag struct {
 	Content Component
 }
 
-func (t Tag) LoadTemplate(l *Location, w io.StringWriter) {
+func (t Tag) LoadTemplate(l *Location, d *TemplateDataLoader, w io.StringWriter) {
 	_, _ = w.WriteString(`<`)
 	_, _ = w.WriteString(t.Name)
 	for _, attr := range t.Attrs {
@@ -62,7 +62,7 @@ func (t Tag) LoadTemplate(l *Location, w io.StringWriter) {
 	}
 	_, _ = w.WriteString(`>`)
 	if t.Content != nil {
-		t.Content.LoadTemplate(l, w)
+		t.Content.LoadTemplate(l, d, w)
 	}
 	_, _ = w.WriteString(`</`)
 	_, _ = w.WriteString(t.Name)
@@ -97,7 +97,7 @@ type Div struct {
 	Content Component
 }
 
-func (d Div) LoadTemplate(l *Location, w io.StringWriter) {
+func (d Div) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "div",
 		Attrs: removeEmptyAttributes(append(d.Attr,
@@ -106,11 +106,39 @@ func (d Div) LoadTemplate(l *Location, w io.StringWriter) {
 			Attr{Name: "style", Value: strings.Join(d.Style, ";")},
 		)),
 		Content: d.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (d Div) LoadMux(l *Location, m *mux.Router) {
-	d.Content.LoadMux(l, m)
+	if d.Content != nil {
+		d.Content.LoadMux(l, m)
+	}
+}
+
+// Label is a shorthand for a "label" Tag
+type Label struct {
+	ID      string
+	Classes []string
+	Style   []string
+	Attr    []Attr
+
+	Text string
+}
+
+func (l Label) LoadTemplate(c *Location, t *TemplateDataLoader, w io.StringWriter) {
+	Tag{
+		Name: "div",
+		Attrs: removeEmptyAttributes(append(l.Attr,
+			Attr{Name: "id", Value: l.ID},
+			Attr{Name: "class", Value: strings.Join(l.Classes, " ")},
+			Attr{Name: "style", Value: strings.Join(l.Style, ";")},
+		)),
+		Content: Raw(l.Text),
+	}.LoadTemplate(c, t, w)
+}
+
+func (l Label) LoadMux(c *Location, m *mux.Router) {
+	// NoOp
 }
 
 // Span is a shorthand for a "span" Tag
@@ -123,7 +151,7 @@ type Span struct {
 	Content Component
 }
 
-func (s Span) LoadTemplate(l *Location, w io.StringWriter) {
+func (s Span) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "span",
 		Attrs: removeEmptyAttributes(append(s.Attr,
@@ -132,7 +160,7 @@ func (s Span) LoadTemplate(l *Location, w io.StringWriter) {
 			Attr{Name: "style", Value: strings.Join(s.Style, ";")},
 		)),
 		Content: s.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (s Span) LoadMux(l *Location, m *mux.Router) {
@@ -148,7 +176,7 @@ type Nav struct {
 	Content Component
 }
 
-func (n Nav) LoadTemplate(l *Location, w io.StringWriter) {
+func (n Nav) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "nav",
 		Attrs: removeEmptyAttributes([]Attr{
@@ -158,47 +186,10 @@ func (n Nav) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "role", Value: "navigation"},
 		}),
 		Content: n.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (n Nav) LoadMux(l *Location, m *mux.Router) {
-	n.Content.LoadMux(l, m)
-}
-
-type InputType string
-
-const (
-	InputTypeText  InputType = "text"
-	InputTypeColor InputType = "color"
-	InputTypeDate  InputType = "date"
-)
-
-type Input struct {
-	ID          string
-	Classes     []string
-	Style       []string
-	Placeholder string
-	InputType   InputType
-	Disabled    bool
-
-	Content Component
-}
-
-func (i Input) LoadTemplate(l *Location, w io.StringWriter) {
-	Tag{
-		Name: "input",
-		Attrs: removeEmptyAttributes([]Attr{
-			{Name: "id", Value: i.ID},
-			{Name: "class", Value: strings.Join(i.Classes, " ")},
-			{Name: "style", Value: strings.Join(i.Style, ";")},
-			{Name: "placeholder", Value: i.Placeholder},
-			{Name: "disabled", Enabled: i.Disabled},
-		}),
-		Content: i.Content,
-	}.LoadTemplate(l, w)
-}
-
-func (n Input) LoadMux(l *Location, m *mux.Router) {
 	n.Content.LoadMux(l, m)
 }
 
@@ -214,32 +205,32 @@ type Button struct {
 	Content Component
 }
 
-func (b Button) LoadTemplate(l *Location, w io.StringWriter) {
-	attr := b.Attr
-	if b.OnClick != nil {
-		attr = append(attr,
-			Attr{Name: "hx-get", Value: l.Path(b.ID)},
-			Attr{Name: "hx-swap", Value: "none"},
-		)
-	}
-	Tag{
-		Name: "button",
-		Attrs: removeEmptyAttributes(append(attr,
-			Attr{Name: "id", Value: b.ID},
-			Attr{Name: "class", Value: strings.Join(b.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(b.Style, ";")},
-			Attr{Name: "disabled", Enabled: b.Disabled},
-		)),
-		Content: b.Content,
-	}.LoadTemplate(l, w)
-}
+// func (b Button) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
+// 	attr := b.Attr
+// 	if b.OnClick != nil {
+// 		attr = append(attr,
+// 			Attr{Name: "hx-get", Value: l.Path(b.ID)},
+// 			Attr{Name: "hx-swap", Value: "none"},
+// 		)
+// 	}
+// 	Tag{
+// 		Name: "button",
+// 		Attrs: removeEmptyAttributes(append(attr,
+// 			Attr{Name: "id", Value: b.ID},
+// 			Attr{Name: "class", Value: strings.Join(b.Classes, " ")},
+// 			Attr{Name: "style", Value: strings.Join(b.Style, ";")},
+// 			Attr{Name: "disabled", Enabled: b.Disabled},
+// 		)),
+// 		Content: b.Content,
+// 	}.LoadTemplate(l, t, w)
+// }
 
-func (b Button) LoadMux(l *Location, m *mux.Router) {
-	if b.OnClick != nil {
-		m.Handle(l.Path(b.ID), ActionHandler{Location: l, Action: b.OnClick})
-	}
-	b.Content.LoadMux(l, m)
-}
+// func (b Button) LoadMux(l *Location, m *mux.Router) {
+// 	if b.OnClick != nil {
+// 		m.Handle(l.Path(b.ID), ActionHandler{Location: l, Action: b.OnClick})
+// 	}
+// 	b.Content.LoadMux(l, m)
+// }
 
 type A struct {
 	ID      string
@@ -251,7 +242,7 @@ type A struct {
 	Content Component
 }
 
-func (a A) LoadTemplate(l *Location, w io.StringWriter) {
+func (a A) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "input",
 		Attrs: removeEmptyAttributes(append(a.Attr,
@@ -261,7 +252,7 @@ func (a A) LoadTemplate(l *Location, w io.StringWriter) {
 			Attr{Name: "href", Value: a.Href},
 		)),
 		Content: a.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (a A) LoadMux(l *Location, m *mux.Router) {
@@ -276,7 +267,7 @@ type UL struct {
 	Contents Fragment
 }
 
-func (u UL) LoadTemplate(l *Location, w io.StringWriter) {
+func (u UL) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	wrapped := make(Fragment, len(u.Contents))
 	for i, content := range u.Contents {
 		if _, ok := content.(LI); !ok {
@@ -291,7 +282,7 @@ func (u UL) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "style", Value: strings.Join(u.Style, ";")},
 		}),
 		Content: wrapped,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (u UL) LoadMux(l *Location, m *mux.Router) {
@@ -306,7 +297,7 @@ type LI struct {
 	Content Component
 }
 
-func (li LI) LoadTemplate(l *Location, w io.StringWriter) {
+func (li LI) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "li",
 		Attrs: removeEmptyAttributes([]Attr{
@@ -315,7 +306,7 @@ func (li LI) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "style", Value: strings.Join(li.Style, ";")},
 		}),
 		Content: li.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (li LI) LoadMux(l *Location, m *mux.Router) {
@@ -330,7 +321,7 @@ type FieldSet struct {
 	Content Component
 }
 
-func (fs FieldSet) LoadTemplate(l *Location, w io.StringWriter) {
+func (fs FieldSet) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "fieldset",
 		Attrs: removeEmptyAttributes([]Attr{
@@ -339,7 +330,7 @@ func (fs FieldSet) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "style", Value: strings.Join(fs.Style, ";")},
 		}),
 		Content: fs.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (fs FieldSet) LoadMux(l *Location, m *mux.Router) {
@@ -354,7 +345,7 @@ type Legend struct {
 	Content Component
 }
 
-func (le Legend) LoadTemplate(l *Location, w io.StringWriter) {
+func (le Legend) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "fieldset",
 		Attrs: removeEmptyAttributes([]Attr{
@@ -363,7 +354,7 @@ func (le Legend) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "style", Value: strings.Join(le.Style, ";")},
 		}),
 		Content: le.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (fs Legend) LoadMux(l *Location, m *mux.Router) {

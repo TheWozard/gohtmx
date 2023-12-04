@@ -21,7 +21,7 @@ type Stream struct {
 	SSEEventGenerator SSEEventGenerator
 }
 
-func (s Stream) LoadTemplate(l *Location, w io.StringWriter) {
+func (s Stream) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Div{
 		ID:      s.ID,
 		Classes: s.Classes,
@@ -30,7 +30,7 @@ func (s Stream) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "sse-connect", Value: l.Path(severSideEventPrefix, s.ID)},
 		},
 		Content: s.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (s Stream) LoadMux(l *Location, m *mux.Router) {
@@ -64,7 +64,7 @@ func (st StreamTarget) events() []string {
 	return st.Events
 }
 
-func (st StreamTarget) LoadTemplate(l *Location, w io.StringWriter) {
+func (st StreamTarget) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Div{
 		ID:      st.ID,
 		Classes: st.Classes,
@@ -73,7 +73,7 @@ func (st StreamTarget) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "hx-swap", Value: string(st.Swap.OrDefault(SwapContent))},
 		},
 		Content: st.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (st StreamTarget) LoadMux(l *Location, m *mux.Router) {
@@ -99,15 +99,15 @@ func (se SSEEvent) event() string {
 	return se.Event
 }
 
-func (se SSEEvent) string(l *Location) string {
+func (se SSEEvent) string(l *Location, t *TemplateDataLoader) string {
 	var builder strings.Builder
 	_, _ = builder.WriteString(fmt.Sprintf("event: %s\n", se.event()))
 	_, _ = builder.WriteString("data: ")
 	if se.Data != nil {
 		if se.Prefix != "" {
-			se.Data.LoadTemplate(l, &builder)
+			se.Data.LoadTemplate(l, t, &builder)
 		} else {
-			se.Data.LoadTemplate(l, &builder)
+			se.Data.LoadTemplate(l, t, &builder)
 		}
 	} else {
 		builder.WriteString("nil")
@@ -141,7 +141,8 @@ func (sh SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go sh.EventGenerator(ctx, stream)
 	for event := range stream {
-		_, err := fmt.Fprint(w, event.string(sh.Location))
+		// TODO: Broken, need to fix.
+		_, err := fmt.Fprint(w, event.string(sh.Location, nil))
 		if err != nil {
 			break
 		}

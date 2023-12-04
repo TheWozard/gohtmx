@@ -1,0 +1,12 @@
+html {
+    background-color: hsl(0, 0%, 96%);
+}
+
+.centered {
+    max-width: 700px;
+    margin: 2em auto;
+}
+
+.fill {
+    width: 100%;
+}

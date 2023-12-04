@@ -19,7 +19,7 @@ type TabSelector struct {
 	Content Component
 }
 
-func (ts TabSelector) LoadTemplate(l *Location, w io.StringWriter) {
+func (ts TabSelector) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	A{
 		Classes: ts.Classes,
 		Attr: []Attr{
@@ -28,11 +28,11 @@ func (ts TabSelector) LoadTemplate(l *Location, w io.StringWriter) {
 			{Name: "hx-push-url", Value: "true"},
 		},
 		Content: ts.Content,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (ts TabSelector) LoadMux(l *Location, m *mux.Router) {
-	m.Handle(l.Path(ts.Tab.Value), TemplateHandler{Template: l.BuildTemplate(ts.Tab.Content)})
+	m.Handle(l.Path(ts.Tab.Value), l.BuildTemplateHandler(ts.Tab.Content))
 	ts.Content.LoadMux(l, m)
 }
 
@@ -46,7 +46,7 @@ type TabTarget struct {
 	AutoRedirect string
 }
 
-func (tt TabTarget) LoadTemplate(l *Location, w io.StringWriter) {
+func (tt TabTarget) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	contents := make(TemplateConditionSet, len(tt.Tabs))
 	for i, tab := range tt.Tabs {
 		contents[i] = tab.AsCondition(l)
@@ -67,7 +67,7 @@ func (tt TabTarget) LoadTemplate(l *Location, w io.StringWriter) {
 		ID:      tt.ID,
 		Classes: tt.Classes,
 		Content: contents,
-	}.LoadTemplate(l, w)
+	}.LoadTemplate(l, t, w)
 }
 
 func (tt TabTarget) LoadMux(l *Location, m *mux.Router) {
