@@ -31,13 +31,13 @@ func (f Form) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter
 	}
 	Tag{
 		Name: "form",
-		Attrs: removeEmptyAttributes(append(f.Attr,
+		Attrs: append(f.Attr,
 			Attr{Name: "id", Value: f.ID},
 			Attr{Name: "class", Value: strings.Join(f.Classes, " ")},
 			Attr{Name: "style", Value: strings.Join(f.Style, ";")},
 			Attr{Name: "hx-post", Value: l.Path(f.ID)},
 			Attr{Name: "hx-target", Value: fmt.Sprintf("#%s-results", f.ID)},
-		)),
+		),
 		Content: Fragment{
 			f.Content,
 			Div{
@@ -72,19 +72,20 @@ func (f Form) LoadMux(l *Location, m *mux.Router) {
 }
 
 type InputText struct {
-	Name        string
-	Classes     []string
-	Style       []string
-	Disabled    bool
-	Readonly    bool
-	Placeholder string
-	Value       string
+	Name         string
+	Classes      []string
+	Style        []string
+	Disabled     bool
+	Readonly     bool
+	Placeholder  string
+	Value        string
+	Autocomplete bool
 }
 
 func (it InputText) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "input",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "name", Value: it.Name},
 			{Name: "type", Value: "text"},
 			{Name: "class", Value: strings.Join(it.Classes, " ")},
@@ -93,7 +94,8 @@ func (it InputText) LoadTemplate(l *Location, t *TemplateDataLoader, w io.String
 			{Name: "disabled", Enabled: it.Disabled},
 			{Name: "readonly", Enabled: it.Readonly},
 			{Name: "value", Value: orDefault(it.Value, fmt.Sprintf(`{{or %s ""}}`, l.Data(it.Name)))},
-		}),
+			{Name: "autocomplete", Off: it.Autocomplete},
+		},
 	}.LoadTemplate(l, t, w)
 }
 
@@ -109,11 +111,11 @@ type InputHidden struct {
 func (ih InputHidden) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "input",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "name", Value: ih.Name},
 			{Name: "type", Value: "hidden"},
 			{Name: "value", Value: orDefault(ih.Value, fmt.Sprintf(`{{or %s ""}}`, l.Data(ih.Name)))},
-		}),
+		},
 	}.LoadTemplate(l, t, w)
 }
 
@@ -133,14 +135,14 @@ type InputSubmit struct {
 func (is InputSubmit) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "input",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: is.ID},
 			{Name: "type", Value: "submit"},
 			{Name: "class", Value: strings.Join(is.Classes, " ")},
 			{Name: "style", Value: strings.Join(is.Style, ";")},
 			{Name: "disabled", Enabled: is.Disabled},
 			{Name: "value", Value: orDefault(is.Text, "Submit")},
-		}),
+		},
 	}.LoadTemplate(l, t, w)
 }
 

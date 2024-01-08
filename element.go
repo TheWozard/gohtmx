@@ -23,24 +23,29 @@ type Attr struct {
 	Name      string
 	Value     string
 	Enabled   bool
+	Off       bool
 	Condition string
 }
 
 func (a Attr) Empty() bool {
-	return a.Value != "" || a.Enabled
+	return a.Value == "" && !a.Enabled && !a.Off
 }
 
 func (a Attr) String() string {
-	var core string
-	if a.Value == "" {
-		core = a.Name
-	} else {
-		core = fmt.Sprintf(`%s="%s"`, a.Name, a.Value)
-	}
 	if a.Condition != "" {
-		return fmt.Sprintf(`{{if %s}}%s{{end}}`, a.Name, a.Value)
+		return fmt.Sprintf(`{{if %s}}%s{{end}}`, a.Condition, a.core())
 	}
-	return core
+	return a.core()
+}
+
+func (a Attr) core() string {
+	if a.Value != "" {
+		return fmt.Sprintf(`%s="%s"`, a.Name, a.Value)
+	}
+	if a.Off {
+		return fmt.Sprintf(`%s="%s"`, a.Name, "off")
+	}
+	return a.Name
 }
 
 // Tag defines the lowest level HTML generic tag element.
@@ -57,32 +62,24 @@ func (t Tag) LoadTemplate(l *Location, d *TemplateDataLoader, w io.StringWriter)
 	_, _ = w.WriteString(`<`)
 	_, _ = w.WriteString(t.Name)
 	for _, attr := range t.Attrs {
-		_, _ = w.WriteString(` `)
-		_, _ = w.WriteString(attr.String())
+		if !attr.Empty() {
+			_, _ = w.WriteString(` `)
+			_, _ = w.WriteString(attr.String())
+		}
 	}
-	_, _ = w.WriteString(`>`)
 	if t.Content != nil {
+		_, _ = w.WriteString(`>`)
 		t.Content.LoadTemplate(l, d, w)
+		_, _ = w.WriteString(`</`)
+		_, _ = w.WriteString(t.Name)
+		_, _ = w.WriteString(`>`)
+	} else {
+		_, _ = w.WriteString(`/>`)
 	}
-	_, _ = w.WriteString(`</`)
-	_, _ = w.WriteString(t.Name)
-	_, _ = w.WriteString(`>`)
 }
 
 func (t Tag) LoadMux(l *Location, m *mux.Router) {
 	t.Content.LoadMux(l, m)
-}
-
-func removeEmptyAttributes(attrs []Attr) []Attr {
-	offset := 0
-	for i, attr := range attrs {
-		if attr.Empty() {
-			attrs[i-offset] = attr
-		} else {
-			offset += 1
-		}
-	}
-	return attrs[:len(attrs)-offset]
 }
 
 // --- Shorthand Components ---
@@ -100,11 +97,11 @@ type Div struct {
 func (d Div) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "div",
-		Attrs: removeEmptyAttributes(append(d.Attr,
+		Attrs: append(d.Attr,
 			Attr{Name: "id", Value: d.ID},
 			Attr{Name: "class", Value: strings.Join(d.Classes, " ")},
 			Attr{Name: "style", Value: strings.Join(d.Style, ";")},
-		)),
+		),
 		Content: d.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -128,11 +125,11 @@ type Label struct {
 func (l Label) LoadTemplate(c *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "div",
-		Attrs: removeEmptyAttributes(append(l.Attr,
+		Attrs: append(l.Attr,
 			Attr{Name: "id", Value: l.ID},
 			Attr{Name: "class", Value: strings.Join(l.Classes, " ")},
 			Attr{Name: "style", Value: strings.Join(l.Style, ";")},
-		)),
+		),
 		Content: Raw(l.Text),
 	}.LoadTemplate(c, t, w)
 }
@@ -154,11 +151,11 @@ type Span struct {
 func (s Span) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "span",
-		Attrs: removeEmptyAttributes(append(s.Attr,
+		Attrs: append(s.Attr,
 			Attr{Name: "id", Value: s.ID},
 			Attr{Name: "class", Value: strings.Join(s.Classes, " ")},
 			Attr{Name: "style", Value: strings.Join(s.Style, ";")},
-		)),
+		),
 		Content: s.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -179,12 +176,12 @@ type Nav struct {
 func (n Nav) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "nav",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: n.ID},
 			{Name: "class", Value: strings.Join(n.Classes, " ")},
 			{Name: "style", Value: strings.Join(n.Style, ";")},
 			{Name: "role", Value: "navigation"},
-		}),
+		},
 		Content: n.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -245,12 +242,12 @@ type A struct {
 func (a A) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "input",
-		Attrs: removeEmptyAttributes(append(a.Attr,
+		Attrs: append(a.Attr,
 			Attr{Name: "id", Value: a.ID},
 			Attr{Name: "class", Value: strings.Join(a.Classes, " ")},
 			Attr{Name: "style", Value: strings.Join(a.Style, ";")},
 			Attr{Name: "href", Value: a.Href},
-		)),
+		),
 		Content: a.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -276,11 +273,11 @@ func (u UL) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) 
 	}
 	Tag{
 		Name: "ul",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: u.ID},
 			{Name: "class", Value: strings.Join(u.Classes, " ")},
 			{Name: "style", Value: strings.Join(u.Style, ";")},
-		}),
+		},
 		Content: wrapped,
 	}.LoadTemplate(l, t, w)
 }
@@ -300,11 +297,11 @@ type LI struct {
 func (li LI) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "li",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: li.ID},
 			{Name: "class", Value: strings.Join(li.Classes, " ")},
 			{Name: "style", Value: strings.Join(li.Style, ";")},
-		}),
+		},
 		Content: li.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -324,11 +321,11 @@ type FieldSet struct {
 func (fs FieldSet) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "fieldset",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: fs.ID},
 			{Name: "class", Value: strings.Join(fs.Classes, " ")},
 			{Name: "style", Value: strings.Join(fs.Style, ";")},
-		}),
+		},
 		Content: fs.Content,
 	}.LoadTemplate(l, t, w)
 }
@@ -348,11 +345,11 @@ type Legend struct {
 func (le Legend) LoadTemplate(l *Location, t *TemplateDataLoader, w io.StringWriter) {
 	Tag{
 		Name: "fieldset",
-		Attrs: removeEmptyAttributes([]Attr{
+		Attrs: []Attr{
 			{Name: "id", Value: le.ID},
 			{Name: "class", Value: strings.Join(le.Classes, " ")},
 			{Name: "style", Value: strings.Join(le.Style, ";")},
-		}),
+		},
 		Content: le.Content,
 	}.LoadTemplate(l, t, w)
 }
