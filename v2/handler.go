@@ -6,7 +6,7 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/TheWozard/gohtmx/v1/core"
+	"github.com/TheWozard/gohtmx/v2/core"
 )
 
 func NewTemplateHandler(f *Framework, component Component) (*TemplateHandler, error) {

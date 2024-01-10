@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/TheWozard/gohtmx/v1"
+	"github.com/TheWozard/gohtmx/v2"
 	"github.com/gorilla/mux"
 )
 

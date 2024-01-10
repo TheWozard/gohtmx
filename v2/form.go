@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TheWozard/gohtmx/v1/core"
+	"github.com/TheWozard/gohtmx/v2/core"
 )
 
 // -- Value Handlers --

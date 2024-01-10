@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/TheWozard/gohtmx/v1/core"
+	"github.com/TheWozard/gohtmx/v2/core"
 	"github.com/go-chi/chi/v5"
 )
 
