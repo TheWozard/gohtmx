@@ -58,15 +58,14 @@ func main() {
 func Body(store Store) gohtmx.Component {
 	return gohtmx.Fragment{
 		gohtmx.Div{ID: "error"},
-		gohtmx.NewVariable("$t", time.Now),
-		gohtmx.Raw("{{$r.URL.String}}"),
-		gohtmx.Raw("{{$t.Format \"" + time.RFC3339Nano + "\"}}"),
-		gohtmx.Condition{
-			Condition: func(r *http.Request) bool {
-				return r.URL.Path == "/secret/path"
+		gohtmx.Path{
+			ID: "id",
+			Paths: map[string]gohtmx.Component{
+				"links": gohtmx.Raw("links"),
+				"foo":   gohtmx.Raw("foo"),
+				"bar":   gohtmx.Raw("bar"),
 			},
-			Vars:    []string{"$r"},
-			Content: gohtmx.Raw("Secret Value"),
+			Default: "links",
 		},
 		// gohtmx.Form{
 		// 	ID:               "search",

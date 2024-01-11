@@ -14,17 +14,17 @@ import (
 type Dynamic func(f *Framework, r *http.Request) template.HTML
 
 func (d Dynamic) Init(f *Framework, w io.Writer) error {
-	if f.CanTemplate() {
-		id := f.Generator.NewFunctionID(d)
-		slim := f.Slim()
-		f.Template = f.Template.Funcs(template.FuncMap{
-			id: func(r *http.Request) template.HTML {
-				return d(slim, r)
-			},
-		})
-		return Raw(fmt.Sprintf("{{%s .request}}", id)).Init(f, w)
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
 	}
-	return ErrCannotTemplate
+	id := f.Generator.NewFunctionID(d)
+	slim := f.Slim()
+	f.Template = f.Template.Funcs(template.FuncMap{
+		id: func(r *http.Request) template.HTML {
+			return d(slim, r)
+		},
+	})
+	return Raw(fmt.Sprintf("{{%s .request}}", id)).Init(f, w)
 }
 
 // Preview defines a component that can be used to view the resulting template of its contents.

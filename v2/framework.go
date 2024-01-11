@@ -33,7 +33,8 @@ type Framework struct {
 	DataPrefix string
 
 	// TODO: Interface
-	Mux *chi.Mux
+	Mux  *chi.Mux
+	Page http.Handler
 
 	// TODO: Interface?
 	Template *template.Template
@@ -42,7 +43,12 @@ type Framework struct {
 }
 
 func (f *Framework) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	f.Mux.ServeHTTP(w, r)
+	// To create a SPA, we assume any non-HX-Request is a page request.
+	if r.Header.Get("HX-Request") != "true" && f.Page != nil {
+		f.Page.ServeHTTP(w, r)
+	} else {
+		f.Mux.ServeHTTP(w, r)
+	}
 }
 
 // -- Features --
@@ -118,7 +124,11 @@ func (c *Framework) AddInteraction(handler http.Handler) {
 	if c == nil || !c.IsInteractive() || handler == nil {
 		return
 	}
-	c.Mux.Mount(c.Path(), handler)
+	path := c.Path()
+	c.Mux.Mount(path, handler)
+	if path == "/" {
+		c.Page = handler
+	}
 }
 
 // AddInteractionFunc adds an interaction at the passed path. This is a POST request at the relative of this context.
@@ -127,7 +137,7 @@ func (c *Framework) AddInteractionFunc(handler http.HandlerFunc) {
 }
 
 // AddComponentInteraction adds an interaction that specifically returns a fixed component.
-func (c *Framework) AddComponentInteraction(component Component) error {
+func (c *Framework) AddComponentInteraction(component Component, handlers ...http.HandlerFunc) error {
 	if c == nil || !c.IsInteractive() || component == nil {
 		return nil
 	}
@@ -138,6 +148,9 @@ func (c *Framework) AddComponentInteraction(component Component) error {
 		return fmt.Errorf("failed to render component for component interaction: %w", err)
 	}
 	c.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, handler := range handlers {
+			handler(w, r)
+		}
 		_, _ = w.Write(buffer.Bytes())
 	})
 	return nil
