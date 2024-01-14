@@ -2,13 +2,14 @@ package gohtmx_test
 
 import (
 	"bytes"
+	"net/http"
 	"testing"
 
 	"github.com/TheWozard/gohtmx/v2"
 	"github.com/stretchr/testify/assert"
 )
 
-func condition() bool { return true }
+func condition(r *http.Request) bool { return true }
 
 func TestCondition_Init(t *testing.T) {
 	testCases := []struct {

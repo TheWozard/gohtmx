@@ -50,3 +50,11 @@ func (p Preview) Init(f *Framework, w io.Writer) error {
 	}
 	return contentErr
 }
+
+type Repeated struct {
+	Content Component
+}
+
+func (r Repeated) Init(f *Framework, w io.Writer) error {
+	return r.Content.Init(f.NoMux(), w)
+}

@@ -23,22 +23,16 @@ func main() {
 
 	f := gohtmx.NewDefaultFramework()
 	err := f.AddTemplateInteraction(
-		gohtmx.Preview{
-			View: func(content string) string {
-				fmt.Println(content)
-				return content
+		gohtmx.Document{
+			Header: gohtmx.Fragment{
+				gohtmx.Raw(`<meta charset="utf-8">`),
+				gohtmx.Raw(`<meta name="viewport" content="width=device-width, initial-scale=1">`),
+				gohtmx.Raw(`<title>Form Inputs</title>`),
+				gohtmx.Raw(`<link rel="stylesheet" href="/assets/style.css">`),
+				gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
+				gohtmx.Raw(`<script defer src="/assets/script.js"></script>`),
 			},
-			Content: gohtmx.Document{
-				Header: gohtmx.Fragment{
-					gohtmx.Raw(`<meta charset="utf-8">`),
-					gohtmx.Raw(`<meta name="viewport" content="width=device-width, initial-scale=1">`),
-					gohtmx.Raw(`<title>Form Inputs</title>`),
-					gohtmx.Raw(`<link rel="stylesheet" href="/assets/style.css">`),
-					gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
-					gohtmx.Raw(`<script defer src="/assets/script.js"></script>`),
-				},
-				Body: Body(store),
-			},
+			Body: Body(store),
 		},
 	)
 	if err != nil {
@@ -83,7 +77,11 @@ func Search(store Store) gohtmx.Component {
 			gohtmx.AddValuesToQuery("search")(w, r)
 			return nil, nil
 		},
-
+		CanAutoComplete: func(r *http.Request) bool {
+			data := gohtmx.LoadData("search")(r)
+			search, ok := data["search"].(string)
+			return ok && search != ""
+		},
 		Error:   AsCard(gohtmx.Raw("{{.error}}")),
 		Success: Form(store),
 	}

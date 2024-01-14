@@ -47,7 +47,8 @@ type Form struct {
 	// Action defines what happens when the form is submitted.
 	// core.TemplateData is the data that will be passed to the success Component.
 	// If an error occurs, the error Component will be rendered instead.
-	Action func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error)
+	Action          func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error)
+	CanAutoComplete func(r *http.Request) bool
 
 	// The interior contents of this element.
 	Content Component
@@ -81,6 +82,13 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 		}
 		successHandler.ServeHTTPWithExtraData(w, r, data)
 	})
+	var autoload Component
+	if fr.CanAutoComplete != nil {
+		autoload = Condition{
+			Condition: fr.CanAutoComplete,
+			Content:   Repeated{Content: fr.Success},
+		}
+	}
 	return Tag{
 		Name: "form",
 		Attrs: append(fr.Attr,
@@ -93,7 +101,8 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 		Content: Fragment{
 			fr.Content,
 			Div{
-				ID: fmt.Sprintf("%s-results", fr.ID),
+				ID:      fmt.Sprintf("%s-results", fr.ID),
+				Content: autoload,
 			},
 		},
 	}.Init(f, w)

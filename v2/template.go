@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/TheWozard/gohtmx/v2/core"
 )
@@ -54,13 +53,12 @@ func (t With) Init(f *Framework, w io.Writer) error {
 }
 
 type Condition struct {
-	Condition any
-	Vars      []string
+	Condition func(r *http.Request) bool
 	Content   Component
 }
 
 func (tc Condition) ConditionString(id string) string {
-	return fmt.Sprintf("if %s", strings.Join(append([]string{id}, tc.Vars...), " "))
+	return fmt.Sprintf("if %s $r", id)
 }
 
 func (tc Condition) Init(f *Framework, w io.Writer) error {

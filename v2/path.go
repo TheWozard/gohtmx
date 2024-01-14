@@ -36,7 +36,6 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 					(len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/')
 			},
 			Content: content,
-			Vars:    []string{"$r"},
 		})
 
 		// Interactions for other components to use.

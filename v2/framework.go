@@ -105,6 +105,15 @@ func (f *Framework) WithTemplate(t *template.Template) *Framework {
 	}
 }
 
+func (f *Framework) NoMux() *Framework {
+	return &Framework{
+		PathPrefix: f.PathPrefix,
+		DataPrefix: f.DataPrefix,
+		Generator:  f.Generator,
+		Template:   f.Template,
+	}
+}
+
 func (f *Framework) Slim() *Framework {
 	return &Framework{
 		PathPrefix: f.PathPrefix,
