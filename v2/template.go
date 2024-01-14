@@ -4,28 +4,53 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net/http"
 	"strings"
+
+	"github.com/TheWozard/gohtmx/v2/core"
 )
 
-func NewVariable(name string, get any, vars ...string) TemplateVariable {
-	return TemplateVariable{Name: name, Func: get, Vars: vars}
-}
-
-type TemplateVariable struct {
+type Variable struct {
 	Name string
-	Func any
-	Vars []string
+	Func func(*http.Request) any
 }
 
-func (tv TemplateVariable) Init(f *Framework, w io.Writer) error {
+func (tv Variable) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
 		return ErrCannotTemplate
 	}
 	id := f.Generator.NewFunctionID(tv.Func)
-	f.Template = f.Template.Funcs(template.FuncMap{
-		id: tv.Func,
-	})
-	return Raw(fmt.Sprintf("{{%s := %s}}", tv.Name, strings.Join(append([]string{id}, tv.Vars...), " "))).Init(f, w)
+	f.Template = f.Template.Funcs(template.FuncMap{id: tv.Func})
+	return Raw(fmt.Sprintf("{{%s := %s $r}}", tv.Name, id)).Init(f, w)
+}
+
+type With struct {
+	Func    func(*http.Request) core.TemplateData
+	Content Component
+}
+
+func (t With) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
+	}
+	if t.Content == nil {
+		return nil
+	}
+	id := f.Generator.NewFunctionID(t.Func)
+	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
+	err := Raw(fmt.Sprintf("{{with %s $r}}", id)).Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write with prefix: %w", err)
+	}
+	err = t.Content.Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write with content: %w", err)
+	}
+	err = Raw("{{end}}").Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write with suffix: %w", err)
+	}
+	return nil
 }
 
 type Condition struct {

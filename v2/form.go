@@ -44,8 +44,10 @@ type Form struct {
 	Style   []string
 	Attr    []Attr
 
-	// Used to load Template when this component is rendered
-	LoadTemplateData func(r *http.Request) (core.TemplateData, error)
+	// Action defines what happens when the form is submitted.
+	// core.TemplateData is the data that will be passed to the success Component.
+	// If an error occurs, the error Component will be rendered instead.
+	Action func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error)
 
 	// The interior contents of this element.
 	Content Component
@@ -69,14 +71,16 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 			errorHandler.ServeHTTPWithExtraData(w, r, core.TemplateData{"error": err.Error()})
 			return
 		}
-		data, err := fr.LoadTemplateData(r)
-		if err != nil {
-			errorHandler.ServeHTTPWithExtraData(w, r, core.TemplateData{"error": err.Error()})
-			return
+		var data core.TemplateData
+		if fr.Action != nil {
+			data, err = fr.Action(w, r)
+			if err != nil {
+				errorHandler.ServeHTTPWithExtraData(w, r, core.TemplateData{"error": err.Error()})
+				return
+			}
 		}
 		successHandler.ServeHTTPWithExtraData(w, r, data)
 	})
-
 	return Tag{
 		Name: "form",
 		Attrs: append(fr.Attr,
@@ -92,5 +96,71 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 				ID: fmt.Sprintf("%s-results", fr.ID),
 			},
 		},
+	}.Init(f, w)
+}
+
+type InputText struct {
+	ID      string
+	Classes []string
+	Style   []string
+	Attr    []Attr
+
+	Name        string
+	Placeholder string
+	Value       string
+}
+
+func (it InputText) Init(f *Framework, w io.Writer) error {
+	return Tag{
+		Name: "input",
+		Attrs: append(it.Attr,
+			Attr{Name: "id", Value: it.ID},
+			Attr{Name: "class", Value: strings.Join(it.Classes, " ")},
+			Attr{Name: "style", Value: strings.Join(it.Style, ";")},
+			Attr{Name: "type", Value: "text"},
+			Attr{Name: "name", Value: core.FirstNonEmptyString(it.Name, it.ID)},
+			Attr{Name: "placeholder", Value: core.FirstNonEmptyString(it.Placeholder, it.ID)},
+			Attr{Name: "value", Value: it.Value},
+		),
+	}.Init(f, w)
+}
+
+type InputHidden struct {
+	ID    string
+	Name  string
+	Value string
+}
+
+func (ih InputHidden) Init(f *Framework, w io.Writer) error {
+	return Tag{
+		Name: "input",
+		Attrs: []Attr{
+			{Name: "id", Value: ih.ID},
+			{Name: "type", Value: "hidden"},
+			{Name: "name", Value: core.FirstNonEmptyString(ih.Name, ih.ID)},
+			{Name: "value", Value: ih.Value},
+		},
+	}.Init(f, w)
+}
+
+type InputSubmit struct {
+	ID      string
+	Classes []string
+	Style   []string
+	Attr    []Attr
+
+	Text string
+}
+
+func (is InputSubmit) Init(f *Framework, w io.Writer) error {
+	return Tag{
+		Name: "input",
+		Attrs: append(is.Attr,
+			Attr{Name: "id", Value: is.ID},
+			Attr{Name: "class", Value: strings.Join(is.Classes, " ")},
+			Attr{Name: "style", Value: strings.Join(is.Style, ";")},
+			Attr{Name: "type", Value: "submit"},
+			Attr{Name: "value", Value: is.Text},
+		),
 	}.Init(f, w)
 }

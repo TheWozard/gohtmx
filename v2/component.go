@@ -23,9 +23,11 @@ type Fragment []Component
 
 func (fr Fragment) Init(f *Framework, w io.Writer) error {
 	for _, fragment := range fr {
-		err := fragment.Init(f, w)
-		if err != nil {
-			return err
+		if fragment != nil {
+			err := fragment.Init(f, w)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

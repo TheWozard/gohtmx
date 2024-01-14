@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/TheWozard/gohtmx/v2"
+	"github.com/TheWozard/gohtmx/v2/core"
 	"github.com/gorilla/mux"
 )
 
@@ -59,102 +61,78 @@ func Body(store Store) gohtmx.Component {
 	return gohtmx.Fragment{
 		gohtmx.Div{ID: "error"},
 		gohtmx.Path{
-			ID: "id",
+			ID:          "body",
+			DefaultPath: "form",
 			Paths: map[string]gohtmx.Component{
-				"links": gohtmx.Raw("links"),
-				"foo":   gohtmx.Raw("foo"),
-				"bar":   gohtmx.Raw("bar"),
+				"form": Search(store),
+				"foo":  gohtmx.Raw("foo"),
+				"bar":  gohtmx.Raw("bar"),
 			},
-			Default: "links",
 		},
-		// gohtmx.Form{
-		// 	ID:               "search",
-		// 	LoadTemplateData: gohtmx.LoadTemplateDataFromQuery("document"),
-		// 	LoadSubmitData:   gohtmx.LoadTemplateDataFromForm("document"),
-		// 	Content: AsCard(gohtmx.Fragment{
-		// 		AsFieldAddonInput(0,
-		// 			gohtmx.InputText{Classes: []string{"input"}, Placeholder: "Document", Name: "document", Autocomplete: false},
-		// 			gohtmx.InputSubmit{Classes: []string{"button", "is-info"}, Text: "Submit"},
-		// 		),
-		// 	}),
-		// 	Error:   AsCard(gohtmx.Raw("{{.error}}")),
-		// 	Success: Form(store),
-		// },
 	}
 }
 
-// func Form(store Store) gohtmx.Component {
-// 	return gohtmx.Fragment{
-// 		gohtmx.Form{
-// 			ID: "document",
-// 			LoadTemplateData: func(r *http.Request) (gohtmx.TemplateData, error) {
-// 				data := gohtmx.DataFromContext(r.Context())
-// 				document := ""
-// 				if search, ok := data["search"].(gohtmx.TemplateData); ok {
-// 					document, _ = search["document"].(string)
-// 				}
-// 				data, err := store.Get(document)
-// 				return data, err
-// 			},
-// 			LoadSubmitData: func(r *http.Request) (gohtmx.TemplateData, error) {
-// 				data := gohtmx.TemplateData{}
-// 				for key, value := range r.Form {
-// 					data[key] = value[0]
-// 				}
-// 				return nil, store.Set(r.Form["document"][0], data)
-// 			},
-// 			Content: AsCard(gohtmx.Fragment{
-// 				gohtmx.InputHidden{Name: "document", Value: `{{or .search.document ""}}`},
-// 				LabeledField("First", gohtmx.InputText{Classes: []string{"input"}, Placeholder: "First", Name: "first"}),
-// 				LabeledField("Last", gohtmx.InputText{Classes: []string{"input"}, Placeholder: "Last", Name: "last"}),
-// 				LabeledField("Title", gohtmx.InputText{Classes: []string{"input"}, Placeholder: "Title", Name: "title"}),
-// 				gohtmx.InputSubmit{Classes: []string{"button", "is-primary"}, Text: "Submit"},
-// 			}),
-// 			Error:   AsCard(gohtmx.Raw("{{.error}}")),
-// 			Success: AsCard(gohtmx.Raw("Success!")),
-// 		},
-// 	}
-// }
+func Search(store Store) gohtmx.Component {
+	return gohtmx.Form{
+		ID: "search",
+		Content: AsCard(gohtmx.With{
+			Func:    gohtmx.LoadData("search"),
+			Content: gohtmx.InputText{Placeholder: "Search", Name: "search", Value: "{{.search}}"},
+		}),
+		Action: func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error) {
+			gohtmx.AddValuesToQuery("search")(w, r)
+			return nil, nil
+		},
+
+		Error:   AsCard(gohtmx.Raw("{{.error}}")),
+		Success: Form(store),
+	}
+}
+
+func Form(store Store) gohtmx.Component {
+	return gohtmx.Form{
+		ID: "document",
+		Action: func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error) {
+			data := gohtmx.LoadData("document", "first", "last", "title")(r)
+			document, ok := data["document"].(string)
+			if !ok {
+				return nil, fmt.Errorf("no document found")
+			}
+			return core.TemplateData{
+				"time": time.Now().Format(time.RFC3339Nano),
+			}, store.Set(document, data)
+		},
+		Content: AsCard(gohtmx.With{
+			Func: func(r *http.Request) core.TemplateData {
+				data := gohtmx.LoadData("search")(r)
+				var document any
+				search, ok := data["search"].(string)
+				if ok {
+					search = strings.ToLower(search)
+					data["search"] = search
+					document, _ = store.Get(search)
+				}
+				return data.Merge(core.TemplateData{"document": document})
+			},
+			Content: gohtmx.Fragment{
+				gohtmx.InputHidden{Name: "document", Value: "{{.search}}"},
+				gohtmx.InputText{Placeholder: "First", Name: "first", Value: "{{.document.first}}"},
+				gohtmx.InputText{Placeholder: "Last", Name: "last", Value: "{{.document.last}}"},
+				gohtmx.InputText{Placeholder: "Title", Name: "title", Value: "{{.document.title}}"},
+				gohtmx.InputSubmit{Text: "Submit"},
+			},
+		}),
+		Error:   AsCard(gohtmx.Raw("{{.error}}")),
+		Success: AsCard(gohtmx.Raw("Success at {{.time}}!")),
+	}
+}
 
 func AsCard(content gohtmx.Component) gohtmx.Component {
 	return gohtmx.Div{
 		Classes: []string{"card centered"},
-		Content: gohtmx.Div{
-			Classes: []string{"card-content"},
-			Content: content,
-		},
+		Content: content,
 	}
 }
-
-func AsFieldAddonInput(fill int, contents ...gohtmx.Component) gohtmx.Component {
-	for i, content := range contents {
-		div := gohtmx.Div{
-			Classes: []string{"control"},
-			Content: content,
-		}
-		if i == fill {
-			div.Classes = append(div.Classes, "fill")
-		}
-		contents[i] = div
-	}
-	return gohtmx.Div{
-		Classes: []string{"field", "has-addons"},
-		Content: gohtmx.Fragment(contents),
-	}
-}
-
-// func LabeledField(label string, content gohtmx.Component) gohtmx.Component {
-// 	return gohtmx.Div{
-// 		Classes: []string{"field"},
-// 		Content: gohtmx.Fragment{
-// 			gohtmx.Label{Classes: []string{"label"}, Text: label},
-// 			gohtmx.Div{
-// 				Classes: []string{"control", "fill"},
-// 				Content: content,
-// 			},
-// 		},
-// 	}
-// }
 
 // Defines a simple persistent file store for getting and setting json data.
 type Store struct {

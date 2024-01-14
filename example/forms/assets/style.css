@@ -1,5 +1,13 @@
 html {
     background-color: hsl(0, 0%, 96%);
+    font-family: sans-serif;
+}
+
+.card {
+    background-color: white;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    padding: 1em;
 }
 
 .centered {

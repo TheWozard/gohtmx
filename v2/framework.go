@@ -12,6 +12,7 @@ import (
 )
 
 var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
+var ErrNilComponent = fmt.Errorf("component cannot be nil")
 
 func NewDefaultFramework() *Framework {
 	return &Framework{
@@ -53,58 +54,62 @@ func (f *Framework) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // -- Features --
 
-func (c *Framework) IsInteractive() bool {
-	return c.Mux != nil
+func (f *Framework) IsInteractive() bool {
+	return f.Mux != nil
 }
 
-func (c *Framework) CanTemplate() bool {
-	return c.Template != nil
+func (f *Framework) CanTemplate() bool {
+	return f.Template != nil
 }
 
 // -- Location ---
 
-func (c *Framework) Path(segments ...string) string {
+func (f *Framework) Path(segments ...string) string {
 	if len(segments) > 0 {
-		return strings.TrimRight(c.PathPrefix, "/") + "/" + strings.TrimLeft(strings.Join(segments, "/"), "/")
+		return strings.TrimRight(f.PathPrefix, "/") + "/" + strings.TrimLeft(strings.Join(segments, "/"), "/")
 	}
-	return c.PathPrefix
+	return f.PathPrefix
 }
 
-func (c *Framework) Data(segments ...string) string {
-	return c.DataPrefix + "." + strings.Join(segments, ".")
+func (f *Framework) Data(segments ...string) string {
+	return f.DataPrefix + "." + strings.Join(segments, ".")
 }
 
-func (c *Framework) AtPath(segments ...string) *Framework {
+func (f *Framework) AtPath(segments ...string) *Framework {
 	return &Framework{
-		PathPrefix: c.Path(segments...),
-		DataPrefix: c.DataPrefix,
-		Mux:        c.Mux,
-		Template:   c.Template,
-	}
-}
-
-func (c *Framework) AtData(segments ...string) *Framework {
-	return &Framework{
-		PathPrefix: c.PathPrefix,
-		DataPrefix: c.Data(segments...),
-		Mux:        c.Mux,
-		Template:   c.Template,
+		PathPrefix: f.Path(segments...),
+		DataPrefix: f.DataPrefix,
+		Generator:  f.Generator,
+		Mux:        f.Mux,
+		Template:   f.Template,
 	}
 }
 
-func (c *Framework) WithTemplate(t *template.Template) *Framework {
+func (f *Framework) AtData(segments ...string) *Framework {
 	return &Framework{
-		PathPrefix: c.PathPrefix,
-		DataPrefix: c.DataPrefix,
-		Mux:        c.Mux,
+		PathPrefix: f.PathPrefix,
+		DataPrefix: f.Data(segments...),
+		Generator:  f.Generator,
+		Mux:        f.Mux,
+		Template:   f.Template,
+	}
+}
+
+func (f *Framework) WithTemplate(t *template.Template) *Framework {
+	return &Framework{
+		PathPrefix: f.PathPrefix,
+		DataPrefix: f.DataPrefix,
+		Generator:  f.Generator,
+		Mux:        f.Mux,
 		Template:   t,
 	}
 }
 
-func (c *Framework) Slim() *Framework {
+func (f *Framework) Slim() *Framework {
 	return &Framework{
-		PathPrefix: c.PathPrefix,
-		DataPrefix: c.DataPrefix,
+		PathPrefix: f.PathPrefix,
+		DataPrefix: f.DataPrefix,
+		Generator:  f.Generator,
 	}
 }
 
@@ -112,42 +117,42 @@ func (c *Framework) Slim() *Framework {
 
 type Middleware func(http.Handler) http.Handler
 
-func (c *Framework) Use(middleware Middleware) {
-	if c == nil || !c.IsInteractive() || middleware == nil {
+func (f *Framework) Use(middleware Middleware) {
+	if f == nil || !f.IsInteractive() || middleware == nil {
 		return
 	}
-	c.Mux.Use(middleware)
+	f.Mux.Use(middleware)
 }
 
 // AddInteraction adds an interaction at the passed path. This is a POST request at the relative of this context.
-func (c *Framework) AddInteraction(handler http.Handler) {
-	if c == nil || !c.IsInteractive() || handler == nil {
+func (f *Framework) AddInteraction(handler http.Handler) {
+	if f == nil || !f.IsInteractive() || handler == nil {
 		return
 	}
-	path := c.Path()
-	c.Mux.Mount(path, handler)
+	path := f.Path()
+	f.Mux.Mount(path, handler)
 	if path == "/" {
-		c.Page = handler
+		f.Page = handler
 	}
 }
 
 // AddInteractionFunc adds an interaction at the passed path. This is a POST request at the relative of this context.
-func (c *Framework) AddInteractionFunc(handler http.HandlerFunc) {
-	c.AddInteraction(handler)
+func (f *Framework) AddInteractionFunc(handler http.HandlerFunc) {
+	f.AddInteraction(handler)
 }
 
 // AddComponentInteraction adds an interaction that specifically returns a fixed component.
-func (c *Framework) AddComponentInteraction(component Component, handlers ...http.HandlerFunc) error {
-	if c == nil || !c.IsInteractive() || component == nil {
+func (f *Framework) AddComponentInteraction(component Component, handlers ...http.HandlerFunc) error {
+	if f == nil || !f.IsInteractive() || component == nil {
 		return nil
 	}
 	buffer := bytes.NewBuffer(nil)
 	// WithTemplate(nil) disables templating. This allows rendered components to note the lack of templating happening on this component.
-	err := component.Init(c.WithTemplate(nil), buffer)
+	err := component.Init(f.WithTemplate(nil), buffer)
 	if err != nil {
 		return fmt.Errorf("failed to render component for component interaction: %w", err)
 	}
-	c.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
+	f.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, handler := range handlers {
 			handler(w, r)
 		}
@@ -156,15 +161,20 @@ func (c *Framework) AddComponentInteraction(component Component, handlers ...htt
 	return nil
 }
 
-func (c *Framework) AddTemplateInteraction(component Component) error {
-	if c == nil || !c.IsInteractive() || !c.CanTemplate() || component == nil {
+func (f *Framework) AddTemplateInteraction(component Component, handlers ...http.HandlerFunc) error {
+	if f == nil || !f.IsInteractive() || !f.CanTemplate() || component == nil {
 		return nil
 	}
-	handler, err := c.NewTemplateHandler(component)
+	handler, err := f.NewTemplateHandler(component)
 	if err != nil {
 		return fmt.Errorf("failed to create template handler: %w", err)
 	}
-	c.AddInteraction(handler)
+	f.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, handler := range handlers {
+			handler(w, r)
+		}
+		handler.ServeHTTP(w, r)
+	})
 	return nil
 }
 

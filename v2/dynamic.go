@@ -36,20 +36,17 @@ type Preview struct {
 
 func (p Preview) Init(f *Framework, w io.Writer) error {
 	buffer := bytes.NewBuffer(nil)
-	err := p.Content.Init(f, buffer)
-	if err != nil {
-		return fmt.Errorf("failed to render preview content: %w", err)
-	}
+	contentErr := p.Content.Init(f, buffer)
 	if p.View != nil {
-		_, err = w.Write([]byte(p.View(buffer.String())))
+		_, err := w.Write([]byte(p.View(buffer.String())))
 		if err != nil {
 			return fmt.Errorf("failed to write viewed preview: %w", err)
 		}
 	} else {
-		_, _ = w.Write(buffer.Bytes())
+		_, err := w.Write(buffer.Bytes())
 		if err != nil {
 			return fmt.Errorf("failed to write preview: %w", err)
 		}
 	}
-	return nil
+	return contentErr
 }

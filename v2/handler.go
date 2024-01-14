@@ -10,6 +10,12 @@ import (
 )
 
 func NewTemplateHandler(f *Framework, component Component) (*TemplateHandler, error) {
+	if !f.CanTemplate() {
+		return nil, fmt.Errorf("failed to render component: %w", ErrCannotTemplate)
+	}
+	if component == nil {
+		return nil, fmt.Errorf("failed to render component: %w", ErrNilComponent)
+	}
 	data := bytes.NewBuffer(nil)
 	err := Fragment{
 		Raw("{{$r := .request}}"),
@@ -18,26 +24,25 @@ func NewTemplateHandler(f *Framework, component Component) (*TemplateHandler, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to render component: %w", err)
 	}
-	temp, err := f.Template.Clone()
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone template: %w", err)
-	}
-	temp, err = temp.Parse(data.String())
+	name := f.Generator.NewGroupID("template")
+	f.Template, err = f.Template.New(name).Parse(data.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %w", err)
 	}
 	return &TemplateHandler{
-		Template: temp,
+		Template: f.Template,
+		Name:     name,
 	}, nil
 }
 
 type TemplateHandler struct {
 	Template *template.Template
+	Name     string
 }
 
 func (t TemplateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	buffer := bytes.NewBuffer(nil)
-	err := t.Template.Execute(buffer, core.DataFromContext(r.Context()).Merge(core.TemplateData{"request": r}))
+	err := t.Template.ExecuteTemplate(buffer, t.Name, core.DataFromContext(r.Context()).Merge(core.TemplateData{"request": r}))
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`error rendering template interaction: , %s`, err.Error()), http.StatusInternalServerError)
 		return

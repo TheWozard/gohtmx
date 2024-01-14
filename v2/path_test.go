@@ -38,24 +38,51 @@ func TestPath_Init(t *testing.T) {
 		{
 			desc: "Path with Default",
 			path: gohtmx.Path{
-				ID:      "testID",
-				Default: "default",
+				ID:          "testID",
+				DefaultPath: "default",
 			},
 			framework: gohtmx.NewDefaultFramework(),
 			expected:  `<div id="testID"></div>`,
 			err:       nil,
 		},
 		{
-			desc: "Path with Default and Paths",
+			desc: "Path with DefaultPath and Paths",
 			path: gohtmx.Path{
-				ID:      "testID",
-				Default: "test",
+				ID:          "testID",
+				DefaultPath: "test",
 				Paths: map[string]gohtmx.Component{
 					"test": gohtmx.Raw("content"),
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-trigger="load" hx-target="#testID"></div>{{end}}</div>`,
+			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
+			err:       nil,
+		},
+		{
+			desc: "Path with DefaultPath and DefaultComponent",
+			path: gohtmx.Path{
+				ID:               "testID",
+				DefaultPath:      "test",
+				DefaultComponent: gohtmx.Raw("default"),
+				Paths: map[string]gohtmx.Component{
+					"test": gohtmx.Raw("content"),
+				},
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
+			err:       nil,
+		},
+		{
+			desc: "Path with DefaultComponent",
+			path: gohtmx.Path{
+				ID:               "testID",
+				DefaultComponent: gohtmx.Raw("default"),
+				Paths: map[string]gohtmx.Component{
+					"test": gohtmx.Raw("content"),
+				},
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}default{{end}}</div>`,
 			err:       nil,
 		},
 		{
