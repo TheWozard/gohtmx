@@ -3,7 +3,7 @@ package core_test
 import (
 	"testing"
 
-	"github.com/TheWozard/gohtmx/v1/core"
+	"github.com/TheWozard/gohtmx/v2/core"
 	"github.com/stretchr/testify/assert"
 )
 

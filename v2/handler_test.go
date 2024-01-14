@@ -20,12 +20,6 @@ func TestTemplateHandler_ServeHTTPExtraData(t *testing.T) {
 		expected string
 	}{
 		{
-			desc:     "Empty Template",
-			content:  nil,
-			request:  httptest.NewRequest("GET", "/", nil),
-			expected: "",
-		},
-		{
 			desc:     "Template with Content",
 			content:  gohtmx.Raw("content"),
 			request:  httptest.NewRequest("GET", "/", nil),

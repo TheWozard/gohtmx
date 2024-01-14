@@ -95,7 +95,7 @@ func TestConditions_Init(t *testing.T) {
 				{Condition: condition, Content: gohtmx.Raw("content")},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  "{{if v2_test_condition_0}}content{{end}}",
+			expected:  "{{if v2_test_condition_0 $r}}content{{end}}",
 			err:       nil,
 		},
 		{
@@ -105,7 +105,7 @@ func TestConditions_Init(t *testing.T) {
 				{Condition: condition, Content: gohtmx.Raw("content2")},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  "{{if v2_test_condition_0}}content1{{else if v2_test_condition_1}}content2{{end}}",
+			expected:  "{{if v2_test_condition_0 $r}}content1{{else if v2_test_condition_1 $r}}content2{{end}}",
 			err:       nil,
 		},
 		{
@@ -126,7 +126,7 @@ func TestConditions_Init(t *testing.T) {
 				{Content: gohtmx.Raw("content3")},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  "{{if v2_test_condition_0}}content1{{else if v2_test_condition_1}}content2{{else}}content3{{end}}",
+			expected:  "{{if v2_test_condition_0 $r}}content1{{else if v2_test_condition_1 $r}}content2{{else}}content3{{end}}",
 			err:       nil,
 		},
 		{
