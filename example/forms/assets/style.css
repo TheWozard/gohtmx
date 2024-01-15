@@ -1,5 +1,13 @@
 html {
     background-color: hsl(0, 0%, 96%);
+    font-family: monospace;
+}
+
+.card {
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    padding: 1em;
 }
 
 .centered {
@@ -9,4 +17,67 @@ html {
 
 .fill {
     width: 100%;
+}
+
+.vertical-space>:not(:last-child) {
+    margin-bottom: 1em;
+}
+
+.input-group {
+    display: flex;
+    width: 100%;
+    border-radius: 5px;
+    align-items: center;
+    position: relative;
+    background-color: hsl(0, 0%, 90%);
+}
+
+.input-group>:last-child {
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.input-group>:first-child {
+    border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
+}
+
+.input-group>label {
+    padding: 0 0.5em;
+}
+
+.input-group>input {
+    border: none;
+    background-color: hsl(0, 0%, 96%);
+    flex: 1;
+    padding: 0.5em;
+}
+
+.input-group>input[type="submit"] {
+    border: none;
+    background-color: transparent;
+    flex: none;
+}
+
+.input-group.modified>input {
+    background-color: hsl(124, 47%, 82%);
+}
+
+.input-group .menu {
+    visibility: hidden;
+}
+
+.input-group:focus-within .menu {
+    visibility: visible;
+}
+
+.menu {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border-radius: 5px;
+    padding: 1em;
+    background: hsl(124, 47%, 82%);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    z-index: 1;
 }
