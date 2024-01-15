@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TheWozard/gohtmx/v2"
-	"github.com/TheWozard/gohtmx/v2/core"
+	"github.com/TheWozard/gohtmx/gohtmx"
+	"github.com/TheWozard/gohtmx/gohtmx/core"
 	"github.com/gorilla/mux"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

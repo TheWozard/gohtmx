@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/v2"
+	"github.com/TheWozard/gohtmx/gohtmx"
 	"github.com/stretchr/testify/assert"
 )
 

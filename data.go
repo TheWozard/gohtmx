@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/TheWozard/gohtmx/v2/core"
+	"github.com/TheWozard/gohtmx/gohtmx/core"
 )
 
 func LoadData(params ...string) func(r *http.Request) core.TemplateData {

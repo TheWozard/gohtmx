@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/v2"
-	"github.com/TheWozard/gohtmx/v2/core"
+	"github.com/TheWozard/gohtmx/gohtmx"
+	"github.com/TheWozard/gohtmx/gohtmx/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/TheWozard/gohtmx/v2/core"
+	"github.com/TheWozard/gohtmx/gohtmx/core"
 )
 
 var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
