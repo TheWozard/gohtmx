@@ -11,8 +11,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
 var ErrNilComponent = fmt.Errorf("component cannot be nil")
+var ErrMissingContent = fmt.Errorf("missing component")
+var ErrMissingID = fmt.Errorf("missing id")
 
 func NewDefaultFramework() *Framework {
 	return &Framework{

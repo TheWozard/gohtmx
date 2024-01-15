@@ -84,26 +84,29 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 	})
 	var autoload Component
 	if fr.CanAutoComplete != nil {
-		autoload = Condition{
+		autoload = TCondition{
 			Condition: fr.CanAutoComplete,
 			Content:   Repeated{Content: fr.Success},
 		}
 	}
-	return Tag{
-		Name: "form",
-		Attrs: append(fr.Attr,
-			Attr{Name: "id", Value: fr.ID},
-			Attr{Name: "class", Value: strings.Join(fr.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(fr.Style, ";")},
-			Attr{Name: "hx-post", Value: f.Path()},
-			Attr{Name: "hx-target", Value: fmt.Sprintf("#%s-results", fr.ID)},
-		),
-		Content: Fragment{
-			fr.Content,
-			Div{
-				ID:      fmt.Sprintf("%s-results", fr.ID),
-				Content: autoload,
-			},
+	return Fragment{
+		Tag{
+			Name: "form",
+			Attrs: append(fr.Attr,
+				Attr{Name: "id", Value: fr.ID},
+				Attr{Name: "class", Value: strings.Join(fr.Classes, " ")},
+				Attr{Name: "style", Value: strings.Join(fr.Style, ";")},
+				Attr{Name: "hx-post", Value: f.Path()},
+				Attr{Name: "hx-target", Value: fmt.Sprintf("#%s-results", fr.ID)},
+				Attr{Name: "hx-trigger", Value: "submit"},
+				Attr{Name: "hx-swap", Value: "innerHTML"},
+				Attr{Name: "autocomplete", Value: "off"},
+			),
+			Content: fr.Content,
+		},
+		Div{
+			ID:      fmt.Sprintf("%s-results", fr.ID),
+			Content: autoload,
 		},
 	}.Init(f, w)
 }
@@ -114,23 +117,71 @@ type InputText struct {
 	Style   []string
 	Attr    []Attr
 
+	Validate   func(r *http.Request) core.TemplateData
+	Additional Component
+
 	Name        string
+	Label       string
 	Placeholder string
 	Value       string
 }
 
 func (it InputText) Init(f *Framework, w io.Writer) error {
-	return Tag{
+	c := f.AtPath(core.FirstNonEmptyString(it.ID, it.Name))
+	content := Fragment{}
+	// Label
+	if it.Label != "" {
+		content = append(content, Tag{
+			Name: "label",
+			Attrs: []Attr{
+				{Name: "for", Value: it.ID},
+			},
+			Content: Raw(it.Label),
+		})
+	}
+	// Input
+	inputAttr := []Attr{}
+	groupAttr := it.Attr
+	if it.Validate != nil {
+		inputAttr = append(inputAttr,
+			Attr{Name: "hx-trigger", Value: "keyup changed delay:500ms"},
+			Attr{Name: "hx-post", Value: c.Path()},
+		)
+		groupAttr = append(groupAttr,
+			Attr{Name: "hx-target", Value: "this"},
+			Attr{Name: "hx-swap", Value: "morph:outerHTML"},
+		)
+		if f.IsInteractive() {
+			handler, err := f.NoMux().NewTemplateHandler(it)
+			if err != nil {
+				return fmt.Errorf("failed to create validation handler: %w", err)
+			}
+			c.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
+				data := it.Validate(r)
+				handler.ServeHTTPWithExtraData(w, r, data)
+			})
+		}
+	}
+	content = append(content, Tag{
 		Name: "input",
-		Attrs: append(it.Attr,
-			Attr{Name: "id", Value: it.ID},
-			Attr{Name: "class", Value: strings.Join(it.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(it.Style, ";")},
+		Attrs: append(inputAttr,
 			Attr{Name: "type", Value: "text"},
 			Attr{Name: "name", Value: core.FirstNonEmptyString(it.Name, it.ID)},
 			Attr{Name: "placeholder", Value: core.FirstNonEmptyString(it.Placeholder, it.ID)},
 			Attr{Name: "value", Value: it.Value},
 		),
+	})
+
+	content = append(content, it.Additional)
+
+	return Tag{
+		Name: "div",
+		Attrs: append(groupAttr,
+			Attr{Name: "id", Value: it.ID},
+			Attr{Name: "class", Value: strings.Join(it.Classes, " ")},
+			Attr{Name: "style", Value: strings.Join(it.Style, ";")},
+		),
+		Content: content,
 	}.Init(f, w)
 }
 
@@ -172,4 +223,69 @@ func (is InputSubmit) Init(f *Framework, w io.Writer) error {
 			Attr{Name: "value", Value: is.Text},
 		),
 	}.Init(f, w)
+}
+
+type InputSearch struct {
+	ID      string
+	Classes []string
+	Style   []string
+	Attr    []Attr
+
+	Options     func(r *http.Request) []any
+	PrePopulate bool
+	Additional  Component
+	Target      string
+
+	Name        string
+	Label       string
+	Placeholder string
+	Value       string
+}
+
+func (it InputSearch) Init(f *Framework, w io.Writer) error {
+	addon := Fragment{
+		Raw("{{if .options}}"),
+		Div{
+			Style:   []string{"position: absolute; top: 100%; left: 0; right: 0;"},
+			Classes: []string{"menu"},
+			Content: Fragment{
+				Raw("{{range .options}}"),
+				Button{Content: Raw("{{.}}"), Attr: []Attr{
+					{Name: "hx-get", Value: f.Path() + "?search={{.}}"},
+					{Name: "hx-target", Value: it.Target},
+					{Name: "hx-swap", Value: "innerHTML"},
+				}},
+				Raw("{{end}}"),
+			},
+		},
+		Raw("{{end}}"),
+	}
+	addon = append(addon, it.Additional)
+	var input Component
+	loadData := func(r *http.Request) core.TemplateData {
+		data := LoadData(it.Name)(r)
+		options := it.Options(r)
+		return data.Merge(core.TemplateData{"options": options})
+	}
+	input = InputText{
+		ID:      it.ID,
+		Classes: it.Classes,
+		Style:   it.Style,
+		Attr:    it.Attr,
+
+		Validate:   loadData,
+		Additional: addon,
+
+		Name:        it.Name,
+		Label:       it.Label,
+		Placeholder: it.Placeholder,
+		Value:       it.Value,
+	}
+	if it.PrePopulate {
+		input = TWith{
+			Func:    loadData,
+			Content: input,
+		}
+	}
+	return input.Init(f, w)
 }

@@ -140,6 +140,30 @@ func (d Div) Init(f *Framework, w io.Writer) error {
 	}.Init(f, w)
 }
 
+type Button struct {
+	ID      string
+	Classes []string
+	Style   []string
+	Attr    []Attr
+
+	Hidden bool
+
+	Content Component
+}
+
+func (b Button) Init(f *Framework, w io.Writer) error {
+	return Tag{
+		Name: "button",
+		Attrs: append(b.Attr,
+			Attr{Name: "id", Value: b.ID},
+			Attr{Name: "class", Value: strings.Join(b.Classes, " ")},
+			Attr{Name: "style", Value: strings.Join(b.Style, ";")},
+			Attr{Name: "hidden", Enabled: b.Hidden},
+		),
+		Content: b.Content,
+	}.Init(f, w)
+}
+
 type Input struct {
 	ID      string
 	Name    string

@@ -13,6 +13,8 @@ import (
 	"github.com/TheWozard/gohtmx/v2"
 	"github.com/TheWozard/gohtmx/v2/core"
 	"github.com/gorilla/mux"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 //go:embed assets/*
@@ -30,6 +32,7 @@ func main() {
 				gohtmx.Raw(`<title>Form Inputs</title>`),
 				gohtmx.Raw(`<link rel="stylesheet" href="/assets/style.css">`),
 				gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
+				gohtmx.Raw(`<script src="https://unpkg.com/idiomorph/dist/idiomorph-ext.min.js"></script>`),
 				gohtmx.Raw(`<script defer src="/assets/script.js"></script>`),
 			},
 			Body: Body(store),
@@ -52,15 +55,18 @@ func main() {
 }
 
 func Body(store Store) gohtmx.Component {
-	return gohtmx.Fragment{
-		gohtmx.Div{ID: "error"},
-		gohtmx.Path{
-			ID:          "body",
-			DefaultPath: "form",
-			Paths: map[string]gohtmx.Component{
-				"form": Search(store),
-				"foo":  gohtmx.Raw("foo"),
-				"bar":  gohtmx.Raw("bar"),
+	return gohtmx.Div{
+		Attr: []gohtmx.Attr{{Name: "hx-ext", Value: "morph"}},
+		Content: gohtmx.Fragment{
+			gohtmx.Div{ID: "error"},
+			gohtmx.Path{
+				ID:          "body",
+				DefaultPath: "form",
+				Paths: map[string]gohtmx.Component{
+					"form": Search(store),
+					"foo":  gohtmx.Raw("foo"),
+					"bar":  gohtmx.Raw("bar"),
+				},
 			},
 		},
 	}
@@ -69,9 +75,31 @@ func Body(store Store) gohtmx.Component {
 func Search(store Store) gohtmx.Component {
 	return gohtmx.Form{
 		ID: "search",
-		Content: AsCard(gohtmx.With{
-			Func:    gohtmx.LoadData("search"),
-			Content: gohtmx.InputText{Placeholder: "Search", Name: "search", Value: "{{.search}}"},
+		Content: AsCard(gohtmx.TWith{
+			Func: gohtmx.LoadData("search"),
+			Content: gohtmx.InputSearch{
+				Placeholder: "Search", Name: "search", Value: "{{.search}}", Classes: []string{"input-group"},
+				Options: func(r *http.Request) []any {
+					data := gohtmx.LoadData("search")(r)
+					search, ok := data["search"].(string)
+					if !ok {
+						return nil
+					}
+					options := []any{}
+					for _, name := range store.List() {
+						if len(options) >= 5 {
+							break
+						}
+						if strings.HasPrefix(strings.ToLower(name), strings.ToLower(search)) && name != search {
+							options = append(options, name)
+						}
+					}
+					return options
+				},
+				PrePopulate: true,
+				Additional:  gohtmx.InputSubmit{Text: "Search"},
+				Target:      "#search-results",
+			},
 		}),
 		Action: func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error) {
 			gohtmx.AddValuesToQuery("search")(w, r)
@@ -100,7 +128,7 @@ func Form(store Store) gohtmx.Component {
 				"time": time.Now().Format(time.RFC3339Nano),
 			}, store.Set(document, data)
 		},
-		Content: AsCard(gohtmx.With{
+		Content: AsCard(gohtmx.TWith{
 			Func: func(r *http.Request) core.TemplateData {
 				data := gohtmx.LoadData("search")(r)
 				var document any
@@ -114,9 +142,22 @@ func Form(store Store) gohtmx.Component {
 			},
 			Content: gohtmx.Fragment{
 				gohtmx.InputHidden{Name: "document", Value: "{{.search}}"},
-				gohtmx.InputText{Placeholder: "First", Name: "first", Value: "{{.document.first}}"},
-				gohtmx.InputText{Placeholder: "Last", Name: "last", Value: "{{.document.last}}"},
-				gohtmx.InputText{Placeholder: "Title", Name: "title", Value: "{{.document.title}}"},
+				gohtmx.InputText{
+					Label: "First", Name: "first", Value: "{{.document.first}}",
+					Validate: func(r *http.Request) core.TemplateData {
+						data := gohtmx.LoadData("first")(r)
+						first, _ := data["first"].(string)
+						return core.TemplateData{
+							"modified": true,
+							"document": core.TemplateData{
+								"first": cases.Title(language.English).String(first),
+							},
+						}
+					},
+					Classes: []string{"input-group", "{{if .modified}}modified{{end}}"},
+				},
+				gohtmx.InputText{Label: "Last", Name: "last", Value: "{{.document.last}}", Classes: []string{"input-group"}},
+				gohtmx.InputText{Label: "Title", Name: "title", Value: "{{.document.title}}", Classes: []string{"input-group"}},
 				gohtmx.InputSubmit{Text: "Submit"},
 			},
 		}),
@@ -127,7 +168,7 @@ func Form(store Store) gohtmx.Component {
 
 func AsCard(content gohtmx.Component) gohtmx.Component {
 	return gohtmx.Div{
-		Classes: []string{"card centered"},
+		Classes: []string{"card centered vertical-space"},
 		Content: content,
 	}
 }
@@ -164,4 +205,22 @@ func (s Store) Set(name string, data map[string]any) error {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	return nil
+}
+
+func (s Store) List() []string {
+	files, err := os.ReadDir(s.Path)
+	if err != nil {
+		return nil
+	}
+	result := []string{}
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		name := file.Name()
+		if strings.HasSuffix(name, ".json") {
+			result = append(result, name[:len(name)-5])
+		}
+	}
+	return result
 }

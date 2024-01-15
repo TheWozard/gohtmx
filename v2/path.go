@@ -23,14 +23,14 @@ type Path struct {
 
 func (p Path) Init(f *Framework, w io.Writer) error {
 	if p.ID == "" {
-		return fmt.Errorf("path component requires an id")
+		return fmt.Errorf("path component requires an id: %w", ErrMissingID)
 	}
 
-	conditions := make(Conditions, len(p.Paths))
+	conditions := TConditions{}
 	for key, content := range p.Paths {
 		path := f.Path(key)
 		// Initial Load
-		conditions = append(conditions, Condition{
+		conditions = append(conditions, TCondition{
 			Condition: func(r *http.Request) bool {
 				return strings.HasPrefix(r.URL.Path, path) &&
 					(len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/')
@@ -48,7 +48,7 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 	}
 	// Default loading options.
 	if p.DefaultPath != "" && p.Paths[p.DefaultPath] != nil {
-		conditions = append(conditions, Condition{
+		conditions = append(conditions, TCondition{
 			Content: Div{Attr: []Attr{
 				{Name: "hx-get", Value: f.Path(p.DefaultPath)},
 				{Name: "hx-target", Value: "#" + p.ID},
@@ -56,7 +56,7 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 			}},
 		})
 	} else if p.DefaultComponent != nil {
-		conditions = append(conditions, Condition{
+		conditions = append(conditions, TCondition{
 			Content: p.DefaultComponent,
 		})
 	}

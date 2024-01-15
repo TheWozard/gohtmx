@@ -5,144 +5,226 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/TheWozard/gohtmx/v2/core"
 )
 
-type Variable struct {
-	Name string
-	Func func(*http.Request) any
-}
+var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
+var ErrInvalidVariableName = fmt.Errorf("invalid variable name")
+var ErrMissingAction = fmt.Errorf("missing action")
+var ErrMissingFunction = fmt.Errorf("missing function")
 
-func (tv Variable) Init(f *Framework, w io.Writer) error {
+// TAction defines a template action.
+type TAction string
+
+func (t TAction) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
 		return ErrCannotTemplate
 	}
-	id := f.Generator.NewFunctionID(tv.Func)
-	f.Template = f.Template.Funcs(template.FuncMap{id: tv.Func})
-	return Raw(fmt.Sprintf("{{%s := %s $r}}", tv.Name, id)).Init(f, w)
+	if t == "" {
+		return ErrMissingAction
+	}
+	err := Raw("{{"+t+"}}").Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template action: %w", err)
+	}
+	return nil
 }
 
-type With struct {
+// TBlock defines a template block that requires one end statement.
+type TBlock struct {
+	// The action of this block.
+	Action string
+	// The interior contents of this template block.
+	Content Component
+}
+
+func (t TBlock) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
+	}
+	if t.Action == "" {
+		return ErrMissingAction
+	}
+	if t.Content == nil {
+		return ErrMissingContent
+	}
+	err := Raw("{{"+t.Action+"}}").Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template block prefix: %w", err)
+	}
+	err = t.Content.Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template block content: %w", err)
+	}
+	err = Raw("{{end}}").Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template block suffix: %w", err)
+	}
+	return nil
+}
+
+// TBlocks defines a list of template blocks that require one end statement between them.
+type TBlocks []TBlock
+
+func (t TBlocks) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
+	}
+	if len(t) == 0 {
+		return nil
+	}
+	for i, b := range t {
+		if b.Action == "" {
+			return fmt.Errorf("missing action for template block[%d]: %w", i, ErrMissingAction)
+		}
+		if b.Content == nil {
+			return fmt.Errorf("missing content for template block[%d]: %w", i, ErrMissingContent)
+		}
+		err := Raw("{{"+b.Action+"}}").Init(f, w)
+		if err != nil {
+			return fmt.Errorf("failed to write template blocks prefix[%d]: %w", i, err)
+		}
+		err = b.Content.Init(f, w)
+		if err != nil {
+			return fmt.Errorf("failed to write template blocks content[%d]: %w", i, err)
+		}
+	}
+	err := Raw("{{end}}").Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template blocks suffix: %w", err)
+	}
+	return nil
+}
+
+// TVariable defines a template variable.
+type TVariable struct {
+	// The name of this variable. Example: "$data".
+	Name string
+	// The function that will be called to get the value of this variable.
+	Func func(*http.Request) any
+}
+
+func (t TVariable) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
+	}
+	if t.Name == "" || !strings.HasPrefix(t.Name, "$") {
+		return ErrInvalidVariableName
+	}
+	if t.Func == nil {
+		return ErrMissingFunction
+	}
+	id := f.Generator.NewFunctionID(t.Func)
+	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
+	err := TAction(fmt.Sprintf(`%s := %s $r`, t.Name, id)).Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template variable: %w", err)
+	}
+	return nil
+}
+
+// TWith defines a template block to be executed with . being set to the result of the Func.
+type TWith struct {
 	Func    func(*http.Request) core.TemplateData
 	Content Component
 }
 
-func (t With) Init(f *Framework, w io.Writer) error {
+func (t TWith) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
 		return ErrCannotTemplate
 	}
-	if t.Content == nil {
-		return nil
+	if t.Func == nil {
+		return ErrMissingFunction
 	}
 	id := f.Generator.NewFunctionID(t.Func)
 	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
-	err := Raw(fmt.Sprintf("{{with %s $r}}", id)).Init(f, w)
+	err := TBlock{
+		Action:  fmt.Sprintf(`with %s $r`, id),
+		Content: t.Content,
+	}.Init(f, w)
 	if err != nil {
-		return fmt.Errorf("failed to write with prefix: %w", err)
-	}
-	err = t.Content.Init(f, w)
-	if err != nil {
-		return fmt.Errorf("failed to write with content: %w", err)
-	}
-	err = Raw("{{end}}").Init(f, w)
-	if err != nil {
-		return fmt.Errorf("failed to write with suffix: %w", err)
+		return fmt.Errorf("failed to write template with: %w", err)
 	}
 	return nil
 }
 
-type Condition struct {
+// TCondition defines an conditional template block based on Condition.
+type TCondition struct {
 	Condition func(r *http.Request) bool
 	Content   Component
 }
 
-func (tc Condition) ConditionString(id string) string {
-	return fmt.Sprintf("if %s $r", id)
-}
-
-func (tc Condition) Init(f *Framework, w io.Writer) error {
+func (t TCondition) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
 		return ErrCannotTemplate
 	}
-	if tc.Content == nil {
+	// Special case when no condition
+	if t.Condition == nil {
+		err := t.Content.Init(f, w)
+		if err != nil {
+			return fmt.Errorf("failed to write template condition independent content: %w", err)
+		}
 		return nil
 	}
-	// If there is no condition, then just write the content.
-	if tc.Condition == nil {
-		return tc.Content.Init(f, w)
-	}
-	id := f.Generator.NewFunctionID(tc.Condition)
-	f.Template = f.Template.Funcs(template.FuncMap{
-		id: tc.Condition,
-	})
-	err := Raw("{{"+tc.ConditionString(id)+"}}").Init(f, w)
+	// Standard case
+	id := f.Generator.NewFunctionID(t.Condition)
+	f.Template = f.Template.Funcs(template.FuncMap{id: t.Condition})
+	err := TBlock{
+		Action:  "if" + id + " $r",
+		Content: t.Content,
+	}.Init(f, w)
 	if err != nil {
-		return fmt.Errorf("failed to write condition prefix: %w", err)
-	}
-	err = tc.Content.Init(f, w)
-	if err != nil {
-		return fmt.Errorf("failed to write condition content: %w", err)
-	}
-	err = Raw("{{end}}").Init(f, w)
-	if err != nil {
-		return fmt.Errorf("failed to write condition suffix: %w", err)
+		return fmt.Errorf("failed to write template condition: %w", err)
 	}
 	return nil
 }
 
-type Conditions []Condition
+// TConditions defines a list of conditional template blocks that form an if-elseif-else series.
+// Any conditions with nil condition will be treated as an else.
+type TConditions []TCondition
 
-func (tcs Conditions) Init(f *Framework, w io.Writer) error {
+func (t TConditions) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
 		return ErrCannotTemplate
 	}
-	if len(tcs) == 0 {
-		return nil
-	}
-	if len(tcs) == 1 {
-		return tcs[0].Init(f, w)
-	}
 	elses := Fragment{}
-	branches := 0
-	for i, tc := range tcs {
+	conditions := TBlocks{}
+	for _, tc := range t {
 		if tc.Condition == nil {
-			if tc.Content != nil {
-				elses = append(elses, tc.Content)
-			}
+			elses = append(elses, tc.Content)
 			continue
 		}
-		prefix := ""
-		if branches > 0 {
-			prefix = "else "
+		prefix := "if "
+		if len(conditions) > 0 {
+			prefix = "else if"
 		}
 		id := f.Generator.NewFunctionID(tc.Condition)
-		f.Template = f.Template.Funcs(template.FuncMap{
-			id: tc.Condition,
+		f.Template = f.Template.Funcs(template.FuncMap{id: tc.Condition})
+		conditions = append(conditions, TBlock{
+			Action: prefix + id + " $r",
 		})
-		if err := Raw("{{"+prefix+tc.ConditionString(id)+"}}").Init(f, w); err != nil {
-			return fmt.Errorf(`failed to write Conditions[%d]: %w`, i, err)
-		}
-		if err := tc.Content.Init(f, w); err != nil {
-			return fmt.Errorf(`failed to write Conditions[%d].Content: %w`, i, err)
-		}
-		branches++
 	}
 
 	if len(elses) > 0 {
-		// If some conditions were written, then we need to write the else condition.
-		if branches > 0 {
-			if err := Raw("{{else}}").Init(f, w); err != nil {
-				return fmt.Errorf("failed to write Conditions else: %w", err)
+		// Special case for only elses
+		if len(conditions) == 0 {
+			err := elses.Init(f, w)
+			if err != nil {
+				return fmt.Errorf("failed to write conditions independent else content: %w", err)
 			}
+			return nil
 		}
-		elses.Init(f, w)
+		conditions = append(conditions, TBlock{
+			Action:  "else",
+			Content: elses,
+		})
 	}
 
-	if branches > 0 {
-		if err := Raw("{{end}}").Init(f, w); err != nil {
-			return fmt.Errorf("failed to write Conditions termination: %w", err)
-		}
+	err := conditions.Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write conditions: %w", err)
 	}
 	return nil
 }

@@ -30,7 +30,10 @@ func LoadData(params ...string) func(r *http.Request) core.TemplateData {
 
 func AddValuesToQuery(params ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		err := r.ParseForm()
+		if err != nil {
+			return
+		}
 		current, err := url.Parse(r.Header.Get("HX-Current-URL"))
 		if err != nil {
 			return

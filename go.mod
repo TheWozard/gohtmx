@@ -6,6 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.11
 	github.com/gorilla/mux v1.8.0
 	github.com/stretchr/testify v1.8.4
+	golang.org/x/text v0.14.0
 )
 
 require (
