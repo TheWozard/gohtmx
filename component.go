@@ -1,6 +1,7 @@
 package gohtmx
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -22,11 +23,11 @@ func (c ComponentFunc) Init(f *Framework, w io.Writer) error {
 type Fragment []Component
 
 func (fr Fragment) Init(f *Framework, w io.Writer) error {
-	for _, fragment := range fr {
+	for i, fragment := range fr {
 		if fragment != nil {
 			err := fragment.Init(f, w)
 			if err != nil {
-				return err
+				return AddPathToError(err, fmt.Sprintf("Fragment[%d]", i))
 			}
 		}
 	}

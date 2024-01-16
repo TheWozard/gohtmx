@@ -7,18 +7,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx/core"
 	"github.com/go-chi/chi/v5"
 )
-
-var ErrNilComponent = fmt.Errorf("component cannot be nil")
-var ErrMissingContent = fmt.Errorf("missing component")
-var ErrMissingID = fmt.Errorf("missing id")
 
 func NewDefaultFramework() *Framework {
 	return &Framework{
 		PathPrefix: "/",
-		DataPrefix: ".",
 		Mux:        chi.NewMux(),
 		Template:   template.New("content"),
 		Generator:  core.NewDefaultGenerator(),
@@ -29,16 +24,13 @@ func NewDefaultFramework() *Framework {
 // Framework also acts as an http.Handler to serve the loaded content.
 type Framework struct {
 	// PathPrefix defines the current prefix for a component to build requests from.
-	// TODO: this could maybe be integrated with the MUX layer to reduce the need for actual path prefixing.
 	PathPrefix string
-	// DataPrefix defines the current prefix for relative data loading.
-	DataPrefix string
 
 	// TODO: Interface
 	Mux  *chi.Mux
 	Page http.Handler
 
-	// TODO: Interface?
+	// The template to use for rendering components.
 	Template *template.Template
 
 	Generator core.Generator
@@ -72,24 +64,9 @@ func (f *Framework) Path(segments ...string) string {
 	return f.PathPrefix
 }
 
-func (f *Framework) Data(segments ...string) string {
-	return f.DataPrefix + "." + strings.Join(segments, ".")
-}
-
 func (f *Framework) AtPath(segments ...string) *Framework {
 	return &Framework{
 		PathPrefix: f.Path(segments...),
-		DataPrefix: f.DataPrefix,
-		Generator:  f.Generator,
-		Mux:        f.Mux,
-		Template:   f.Template,
-	}
-}
-
-func (f *Framework) AtData(segments ...string) *Framework {
-	return &Framework{
-		PathPrefix: f.PathPrefix,
-		DataPrefix: f.Data(segments...),
 		Generator:  f.Generator,
 		Mux:        f.Mux,
 		Template:   f.Template,
@@ -99,7 +76,6 @@ func (f *Framework) AtData(segments ...string) *Framework {
 func (f *Framework) WithTemplate(t *template.Template) *Framework {
 	return &Framework{
 		PathPrefix: f.PathPrefix,
-		DataPrefix: f.DataPrefix,
 		Generator:  f.Generator,
 		Mux:        f.Mux,
 		Template:   t,
@@ -109,7 +85,6 @@ func (f *Framework) WithTemplate(t *template.Template) *Framework {
 func (f *Framework) NoMux() *Framework {
 	return &Framework{
 		PathPrefix: f.PathPrefix,
-		DataPrefix: f.DataPrefix,
 		Generator:  f.Generator,
 		Template:   f.Template,
 	}
@@ -118,7 +93,6 @@ func (f *Framework) NoMux() *Framework {
 func (f *Framework) Slim() *Framework {
 	return &Framework{
 		PathPrefix: f.PathPrefix,
-		DataPrefix: f.DataPrefix,
 		Generator:  f.Generator,
 	}
 }

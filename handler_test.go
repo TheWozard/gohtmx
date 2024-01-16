@@ -5,8 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/gohtmx"
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +15,7 @@ func TestTemplateHandler_ServeHTTPExtraData(t *testing.T) {
 		desc     string
 		content  gohtmx.Component
 		request  *http.Request
-		extra    core.TemplateData
+		extra    gohtmx.Data
 		expected string
 	}{
 		{
@@ -35,7 +34,7 @@ func TestTemplateHandler_ServeHTTPExtraData(t *testing.T) {
 			desc:    "Template with Context Data",
 			content: gohtmx.Raw("{{.data}}"),
 			request: httptest.NewRequest("GET", "/test", nil),
-			extra: core.TemplateData{
+			extra: gohtmx.Data{
 				"data": "context data",
 			},
 			expected: "context data",
@@ -47,7 +46,7 @@ func TestTemplateHandler_ServeHTTPExtraData(t *testing.T) {
 			handler, err := gohtmx.NewTemplateHandler(gohtmx.NewDefaultFramework(), tC.content)
 			require.NoError(t, err)
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTPWithExtraData(recorder, tC.request, tC.extra)
+			handler.ServeHTTPWithData(recorder, tC.request, tC.extra)
 			assert.Equal(t, tC.expected, recorder.Body.String())
 		})
 	}

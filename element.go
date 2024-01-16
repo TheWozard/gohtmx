@@ -1,8 +1,10 @@
 package gohtmx
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 )
 
@@ -17,42 +19,61 @@ func (r Raw) Init(f *Framework, w io.Writer) error {
 	return nil
 }
 
-// Attr defines an HTML tag attribute `<Name>="<Value>"“. If Value is empty, only `<Name>` is rendered.
-type Attr struct {
-	Name      string
-	Value     string
-	Stringer  fmt.Stringer
-	Enabled   bool
-	Off       bool
-	True      bool
-	Condition string
+func Attrs(attrs ...string) Attributes {
+	return Attributes(attrs)
 }
 
-func (a Attr) Empty() bool {
-	return a.Value == "" && !a.Enabled && !a.Off && !a.True && a.Stringer == nil
+// Attributes defines a slice of HTML attributes.
+type Attributes []string
+
+func (a Attributes) Copy() Attributes {
+	return append(Attributes{}, a...)
 }
 
-func (a Attr) String() string {
-	if a.Condition != "" {
-		return fmt.Sprintf(`{{if %s}}%s{{end}}`, a.Condition, a.core())
-	}
-	return a.core()
+func (a Attributes) IsEmpty() bool {
+	return len(a) == 0
 }
 
-func (a Attr) core() string {
-	if a.Value != "" {
-		return fmt.Sprintf(`%s="%s"`, a.Name, a.Value)
+// Value adds a named value to the attributes if it is not empty.
+func (a Attributes) Value(name, value string) Attributes {
+	if value != "" {
+		a = append(a, fmt.Sprintf(`%s="%s"`, name, value))
 	}
-	if a.Off {
-		return fmt.Sprintf(`%s="off"`, a.Name)
+	return a
+}
+
+// Values adds a named value to the attributes if the values are not empty.
+func (a Attributes) Values(name string, values ...string) Attributes {
+	return a.Value(name, strings.Join(values, " "))
+}
+
+// Flag adds a named flag to the attributes if active is true.
+func (a Attributes) Flag(name string, active bool) Attributes {
+	if active {
+		a = append(a, name)
 	}
-	if a.True {
-		return fmt.Sprintf(`%s="true"`, a.Name)
+	return a
+}
+
+// Condition adds the given attributes if the condition is true.
+func (a Attributes) Condition(f *Framework, condition func(*http.Request) bool, attrs Attributes) (Attributes, error) {
+	if len(attrs) > 0 {
+		temp := bytes.NewBuffer(nil)
+		err := TCondition{
+			Condition: condition,
+			Content:   Raw(attrs.String()),
+		}.Init(f.NoMux(), temp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write attributes condition: %w", err)
+		}
+		a = append(a, temp.String())
 	}
-	if a.Stringer != nil {
-		return fmt.Sprintf(`%s="%s"`, a.Name, a.Stringer.String())
-	}
-	return a.Name
+	return a, nil
+}
+
+// String returns the string representation of this Attributes.
+func (a Attributes) String() string {
+	return strings.Join(a, ` `)
 }
 
 // Tag defines the lowest level HTML generic tag element.
@@ -60,7 +81,7 @@ type Tag struct {
 	// Name of this tag.
 	Name string
 	// Attr defines the list of Attributes for this tag.
-	Attrs []Attr
+	Attrs Attributes
 	// Content defines the contents this wraps.
 	Content Component
 }
@@ -68,29 +89,27 @@ type Tag struct {
 func (t Tag) Init(f *Framework, w io.Writer) error {
 	_, err := w.Write([]byte(`<` + t.Name))
 	if err != nil {
-		return fmt.Errorf(`failed to write tag "%s" start: %w`, t.Name, err)
+		return AddPathToError(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
 	}
-	for i, attr := range t.Attrs {
-		if !attr.Empty() {
-			_, err = w.Write([]byte(` ` + attr.String()))
-			if err != nil {
-				return fmt.Errorf(`failed to write tag "%s" attr %d: %w`, t.Name, i, err)
-			}
+	if !t.Attrs.IsEmpty() {
+		_, err = w.Write([]byte(` ` + t.Attrs.String()))
+		if err != nil {
+			return AddPathToError(fmt.Errorf(`failed to write start tag attributes: %w`, err), t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`>`))
 	if err != nil {
-		return fmt.Errorf(`failed to write tag "%s" start: %w`, t.Name, err)
+		return AddPathToError(fmt.Errorf(`failed to write start tag end: %w`, err), t.Name)
 	}
 	if t.Content != nil {
 		err = t.Content.Init(f, w)
 		if err != nil {
-			return fmt.Errorf(`failed to write tag "%s" content: %w`, t.Name, err)
+			return AddPathToError(fmt.Errorf(`in %s: %w`, t.Name, err), t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`</` + t.Name + `>`))
 	if err != nil {
-		return fmt.Errorf(`failed to write tag "%s" end: %w`, t.Name, err)
+		return AddPathToError(fmt.Errorf(`failed to write "%s" end tag: %w`, t.Name, err), t.Name)
 	}
 	return nil
 }
@@ -99,9 +118,9 @@ func (t Tag) Init(f *Framework, w io.Writer) error {
 
 // Document the baseline component of an HTML document.
 type Document struct {
-	// Header defines Component to be rendered in between the <head> tags
+	// Header defines Component to be rendered in between the <head> tags.
 	Header Component
-	// Body defines the Component to be rendered in between the <body> tags
+	// Body defines the Component to be rendered in between the <body> tags.
 	Body Component
 }
 
@@ -115,14 +134,12 @@ func (d Document) Init(f *Framework, w io.Writer) error {
 	}.Init(f, w)
 }
 
-// Div is a shorthand for a "div" Tag
+// Div is a shorthand for a "div" Tag.
 type Div struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
-
-	Hidden bool
+	Attrs   Attributes
+	Hidden  bool
 
 	Content Component
 }
@@ -130,23 +147,22 @@ type Div struct {
 func (d Div) Init(f *Framework, w io.Writer) error {
 	return Tag{
 		Name: "div",
-		Attrs: append(d.Attr,
-			Attr{Name: "id", Value: d.ID},
-			Attr{Name: "class", Value: strings.Join(d.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(d.Style, ";")},
-			Attr{Name: "hidden", Enabled: d.Hidden},
-		),
+		Attrs: d.Attrs.
+			Value("id", d.ID).
+			Values("class", d.Classes...).
+			Flag("hidden", d.Hidden),
 		Content: d.Content,
 	}.Init(f, w)
 }
 
+// Button is a shorthand for a "button" Tag.
 type Button struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attr    Attributes
+	Hidden  bool
 
-	Hidden bool
+	// TODO: HTMX attributes as first class citizens.
 
 	Content Component
 }
@@ -154,38 +170,35 @@ type Button struct {
 func (b Button) Init(f *Framework, w io.Writer) error {
 	return Tag{
 		Name: "button",
-		Attrs: append(b.Attr,
-			Attr{Name: "id", Value: b.ID},
-			Attr{Name: "class", Value: strings.Join(b.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(b.Style, ";")},
-			Attr{Name: "hidden", Enabled: b.Hidden},
-		),
+		Attrs: b.Attr.
+			Value("id", b.ID).
+			Values("class", b.Classes...).
+			Flag("hidden", b.Hidden),
 		Content: b.Content,
 	}.Init(f, w)
 }
 
+// Input is a shorthand for an "input" Tag.
 type Input struct {
 	ID      string
-	Name    string
-	Value   string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attr    Attributes
+	Hidden  bool
 
-	Hidden bool
+	Type  string
+	Name  string
+	Value string
 }
 
-func (i Input) Load(f *Framework, w io.Writer) error {
+func (i Input) Init(f *Framework, w io.Writer) error {
 	return Tag{
 		Name: "input",
-		Attrs: append(i.Attr,
-			Attr{Name: "id", Value: i.ID},
-			Attr{Name: "name", Value: i.Name},
-			Attr{Name: "type", Value: "text"},
-			Attr{Name: "value", Value: i.Value},
-			Attr{Name: "class", Value: strings.Join(i.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(i.Style, ";")},
-			Attr{Name: "hidden", Enabled: i.Hidden},
-		),
+		Attrs: i.Attr.
+			Value("id", i.ID).
+			Values("class", i.Classes...).
+			Flag("hidden", i.Hidden).
+			Value("type", i.Type).
+			Value("name", i.Name).
+			Value("value", i.Value),
 	}.Init(f, w)
 }

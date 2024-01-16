@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/TheWozard/gohtmx/gohtmx/core"
 )
 
 var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
@@ -127,7 +125,7 @@ func (t TVariable) Init(f *Framework, w io.Writer) error {
 
 // TWith defines a template block to be executed with . being set to the result of the Func.
 type TWith struct {
-	Func    func(*http.Request) core.TemplateData
+	Func    func(*http.Request) Data
 	Content Component
 }
 
@@ -146,6 +144,29 @@ func (t TWith) Init(f *Framework, w io.Writer) error {
 	}.Init(f, w)
 	if err != nil {
 		return fmt.Errorf("failed to write template with: %w", err)
+	}
+	return nil
+}
+
+// TRange defines a template block to range over a template . variable.
+type TRange struct {
+	Variable string
+	Content  Component
+}
+
+func (t TRange) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return ErrCannotTemplate
+	}
+	if t.Variable == "" {
+		return ErrInvalidVariableName
+	}
+	err := TBlock{
+		Action:  fmt.Sprintf(`range %s `, t.Variable),
+		Content: t.Content,
+	}.Init(f, w)
+	if err != nil {
+		return fmt.Errorf("failed to write template range: %w", err)
 	}
 	return nil
 }
@@ -172,7 +193,7 @@ func (t TCondition) Init(f *Framework, w io.Writer) error {
 	id := f.Generator.NewFunctionID(t.Condition)
 	f.Template = f.Template.Funcs(template.FuncMap{id: t.Condition})
 	err := TBlock{
-		Action:  "if" + id + " $r",
+		Action:  "if " + id + " $r",
 		Content: t.Content,
 	}.Init(f, w)
 	if err != nil {
@@ -192,18 +213,22 @@ func (t TConditions) Init(f *Framework, w io.Writer) error {
 	elses := Fragment{}
 	conditions := TBlocks{}
 	for _, tc := range t {
+		if tc.Content == nil {
+			continue
+		}
 		if tc.Condition == nil {
 			elses = append(elses, tc.Content)
 			continue
 		}
 		prefix := "if "
 		if len(conditions) > 0 {
-			prefix = "else if"
+			prefix = "else if "
 		}
 		id := f.Generator.NewFunctionID(tc.Condition)
 		f.Template = f.Template.Funcs(template.FuncMap{id: tc.Condition})
 		conditions = append(conditions, TBlock{
-			Action: prefix + id + " $r",
+			Action:  prefix + id + " $r",
+			Content: tc.Content,
 		})
 	}
 

@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx/core"
 	"github.com/stretchr/testify/assert"
 )
 

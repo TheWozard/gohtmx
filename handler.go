@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-
-	"github.com/TheWozard/gohtmx/gohtmx/core"
 )
 
 func NewTemplateHandler(f *Framework, component Component) (*TemplateHandler, error) {
@@ -41,15 +39,15 @@ type TemplateHandler struct {
 }
 
 func (t TemplateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	t.ServeHTTPWithData(w, r, nil)
+}
+
+func (t TemplateHandler) ServeHTTPWithData(w http.ResponseWriter, r *http.Request, data Data) {
 	buffer := bytes.NewBuffer(nil)
-	err := t.Template.ExecuteTemplate(buffer, t.Name, core.DataFromContext(r.Context()).Merge(core.TemplateData{"request": r}))
+	err := t.Template.ExecuteTemplate(buffer, t.Name, data.Merge(Data{"request": r}))
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`error rendering template interaction: , %s`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 	_, _ = w.Write(buffer.Bytes())
-}
-
-func (t TemplateHandler) ServeHTTPWithExtraData(w http.ResponseWriter, r *http.Request, data core.TemplateData) {
-	t.ServeHTTP(w, r.WithContext(core.DataFromContext(r.Context()).Merge(data).Context(r.Context())))
 }

@@ -5,8 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/gohtmx"
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -193,7 +192,7 @@ func TestTVariable_Init(t *testing.T) {
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  "{{$varName := v2_test_TestTVariable_Init_func1_0 $r}}",
+			expected:  "{{$varName := gohtmx_test_TestTVariable_Init_func1_0 $r}}",
 			err:       nil,
 		},
 		{
@@ -237,7 +236,7 @@ func TestTWith_Init(t *testing.T) {
 		{
 			desc: "Cannot Template",
 			with: gohtmx.TWith{
-				Func: func(r *http.Request) core.TemplateData {
+				Func: func(r *http.Request) gohtmx.Data {
 					return nil
 				},
 				Content: gohtmx.Raw("content"),
@@ -259,13 +258,13 @@ func TestTWith_Init(t *testing.T) {
 		{
 			desc: "With Content",
 			with: gohtmx.TWith{
-				Func: func(r *http.Request) core.TemplateData {
+				Func: func(r *http.Request) gohtmx.Data {
 					return nil
 				},
 				Content: gohtmx.Raw("content"),
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  "{{with v2_test_TestTWith_Init_func2_0 $r}}content{{end}}",
+			expected:  "{{with gohtmx_test_TestTWith_Init_func2_0 $r}}content{{end}}",
 			err:       nil,
 		},
 	}
@@ -275,6 +274,172 @@ func TestTWith_Init(t *testing.T) {
 			// Byte Validation
 			w := bytes.NewBuffer(nil)
 			err := tC.with.Init(tC.framework, w)
+			assert.Equal(t, tC.err, err)
+			assert.Equal(t, tC.expected, w.String())
+			// Template Validation
+			if tC.framework.CanTemplate() {
+				_, err = tC.framework.Template.Parse("{{$r := nil}}" + w.String())
+				assert.NoError(t, err, "failed to generate valid template")
+			}
+		})
+	}
+}
+
+func TestTCondition_Init(t *testing.T) {
+	testCases := []struct {
+		desc      string
+		condition gohtmx.TCondition
+		framework *gohtmx.Framework
+		expected  string
+		err       error
+	}{
+		{
+			desc: "Cannot Template",
+			condition: gohtmx.TCondition{
+				Condition: func(r *http.Request) bool {
+					return true
+				},
+				Content: gohtmx.Raw("content"),
+			},
+			framework: &gohtmx.Framework{},
+			expected:  "",
+			err:       gohtmx.ErrCannotTemplate,
+		},
+		{
+			desc: "No Condition",
+			condition: gohtmx.TCondition{
+				Condition: nil,
+				Content:   gohtmx.Raw("content"),
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  "content",
+			err:       nil,
+		},
+		{
+			desc: "With Condition",
+			condition: gohtmx.TCondition{
+				Condition: func(r *http.Request) bool {
+					return true
+				},
+				Content: gohtmx.Raw("content"),
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  "{{if gohtmx_test_TestTCondition_Init_func2_0 $r}}content{{end}}",
+			err:       nil,
+		},
+	}
+
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			// Byte Validation
+			w := bytes.NewBuffer(nil)
+			err := tC.condition.Init(tC.framework, w)
+			assert.Equal(t, tC.err, err)
+			assert.Equal(t, tC.expected, w.String())
+			// Template Validation
+			if tC.framework.CanTemplate() {
+				_, err = tC.framework.Template.Parse("{{$r := nil}}" + w.String())
+				assert.NoError(t, err, "failed to generate valid template")
+			}
+		})
+	}
+}
+
+func TestTConditions_Init(t *testing.T) {
+	testCases := []struct {
+		desc       string
+		conditions gohtmx.TConditions
+		framework  *gohtmx.Framework
+		expected   string
+		err        error
+	}{
+		{
+			desc: "Cannot Template",
+			conditions: gohtmx.TConditions{
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content"),
+				},
+			},
+			framework: &gohtmx.Framework{},
+			expected:  "",
+			err:       gohtmx.ErrCannotTemplate,
+		},
+		{
+			desc: "No Conditions",
+			conditions: gohtmx.TConditions{
+				{
+					Condition: nil,
+					Content:   gohtmx.Raw("content"),
+				},
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  "content",
+			err:       nil,
+		},
+		{
+			desc: "With Conditions",
+			conditions: gohtmx.TConditions{
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content1"),
+				},
+				{
+					Condition: nil,
+					Content:   gohtmx.Raw("content2"),
+				},
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  "{{if gohtmx_test_TestTConditions_Init_func2_0 $r}}content1{{else}}content2{{end}}",
+			err:       nil,
+		},
+		{
+			desc: "Many Conditions",
+			conditions: gohtmx.TConditions{
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content1"),
+				},
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content2"),
+				},
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content3"),
+				},
+				{
+					Condition: func(r *http.Request) bool {
+						return true
+					},
+					Content: gohtmx.Raw("content4"),
+				},
+				{
+					Condition: nil,
+					Content:   gohtmx.Raw("content5"),
+				},
+			},
+			framework: gohtmx.NewDefaultFramework(),
+			expected:  "{{if gohtmx_test_TestTConditions_Init_func3_0 $r}}content1{{else if gohtmx_test_TestTConditions_Init_func4_0 $r}}content2{{else if gohtmx_test_TestTConditions_Init_func5_0 $r}}content3{{else if gohtmx_test_TestTConditions_Init_func6_0 $r}}content4{{else}}content5{{end}}",
+			err:       nil,
+		},
+	}
+
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			// Byte Validation
+			w := bytes.NewBuffer(nil)
+			err := tC.conditions.Init(tC.framework, w)
 			assert.Equal(t, tC.err, err)
 			assert.Equal(t, tC.expected, w.String())
 			// Template Validation

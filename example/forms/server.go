@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TheWozard/gohtmx/gohtmx"
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx"
 	"github.com/gorilla/mux"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -56,16 +55,22 @@ func main() {
 
 func Body(store Store) gohtmx.Component {
 	return gohtmx.Div{
-		Attr: []gohtmx.Attr{{Name: "hx-ext", Value: "morph"}},
+		Attrs: gohtmx.Attrs().Value("hx-ext", "morph"),
 		Content: gohtmx.Fragment{
 			gohtmx.Div{ID: "error"},
+			gohtmx.Tag{Name: "navbar", Content: gohtmx.Fragment{
+				gohtmx.Button{
+					Attr:    gohtmx.Attrs().Value("hx-get", "/search").Value("hx-target", "#body"),
+					Content: gohtmx.Raw("Search"),
+				},
+			}},
 			gohtmx.Path{
 				ID:          "body",
-				DefaultPath: "form",
+				DefaultPath: "search",
 				Paths: map[string]gohtmx.Component{
-					"form": Search(store),
-					"foo":  gohtmx.Raw("foo"),
-					"bar":  gohtmx.Raw("bar"),
+					"search": Search(store),
+					"foo":    gohtmx.Raw("foo"),
+					"bar":    gohtmx.Raw("bar"),
 				},
 			},
 		},
@@ -73,96 +78,109 @@ func Body(store Store) gohtmx.Component {
 }
 
 func Search(store Store) gohtmx.Component {
-	return gohtmx.Form{
-		ID: "search",
-		Content: AsCard(gohtmx.TWith{
-			Func: gohtmx.LoadData("search"),
-			Content: gohtmx.InputSearch{
-				Placeholder: "Search", Name: "search", Value: "{{.search}}", Classes: []string{"input-group"},
-				Options: func(r *http.Request) []any {
-					data := gohtmx.LoadData("search")(r)
-					search, ok := data["search"].(string)
-					if !ok {
-						return nil
-					}
-					options := []any{}
-					for _, name := range store.List() {
-						if len(options) >= 5 {
-							break
+	return gohtmx.Fragment{
+		gohtmx.Form{
+			ID: "search",
+			Content: AsCard(gohtmx.TWith{
+				Func: gohtmx.GetDataFromRequest("search"),
+				Content: gohtmx.InputSearch{
+					Placeholder: "Search", Name: "search", Value: "{{.search}}", Classes: []string{"input-group"},
+					Options: func(r *http.Request) []any {
+						search, ok := gohtmx.GetDataFromRequest("search")(r)["search"].(string)
+						if !ok {
+							return nil
 						}
-						if strings.HasPrefix(strings.ToLower(name), strings.ToLower(search)) && name != search {
-							options = append(options, name)
+						options := []any{}
+						for _, name := range store.List() {
+							if len(options) >= 5 {
+								break
+							}
+							if strings.HasPrefix(strings.ToLower(name), strings.ToLower(search)) && name != search {
+								options = append(options, name)
+							}
 						}
-					}
-					return options
+						return options
+					},
+					PrePopulate: true,
+					Additional:  gohtmx.InputSubmit{Text: "Search"},
+					Target:      "#search-results",
 				},
-				PrePopulate: true,
-				Additional:  gohtmx.InputSubmit{Text: "Search"},
-				Target:      "#search-results",
+			}),
+			UpdateParams: []string{"search"},
+			UpdateForm:   true,
+			Target:       "#search-results",
+			Error:        AsCard(gohtmx.Raw("{{.error}}")),
+			Success:      Form(store),
+		},
+		gohtmx.Div{
+			ID: "search-results",
+			// An alternate option to AutoComplete is to write it on initial load.
+			Content: gohtmx.TCondition{
+				Condition: func(r *http.Request) bool {
+					data := gohtmx.GetDataFromRequest("search")(r)
+					search, ok := data["search"].(string)
+					return ok && search != ""
+				},
+				// Interaction is disabled to prevent duplicate interactions.
+				Content: gohtmx.MetaDisableInteraction{
+					Content: Form(store),
+				},
 			},
-		}),
-		Action: func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error) {
-			gohtmx.AddValuesToQuery("search")(w, r)
-			return nil, nil
 		},
-		CanAutoComplete: func(r *http.Request) bool {
-			data := gohtmx.LoadData("search")(r)
-			search, ok := data["search"].(string)
-			return ok && search != ""
-		},
-		Error:   AsCard(gohtmx.Raw("{{.error}}")),
-		Success: Form(store),
 	}
 }
 
 func Form(store Store) gohtmx.Component {
-	return gohtmx.Form{
-		ID: "document",
-		Action: func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error) {
-			data := gohtmx.LoadData("document", "first", "last", "title")(r)
-			document, ok := data["document"].(string)
-			if !ok {
-				return nil, fmt.Errorf("no document found")
-			}
-			return core.TemplateData{
-				"time": time.Now().Format(time.RFC3339Nano),
-			}, store.Set(document, data)
-		},
-		Content: AsCard(gohtmx.TWith{
-			Func: func(r *http.Request) core.TemplateData {
-				data := gohtmx.LoadData("search")(r)
-				var document any
-				search, ok := data["search"].(string)
-				if ok {
-					search = strings.ToLower(search)
-					data["search"] = search
-					document, _ = store.Get(search)
+	return gohtmx.Fragment{
+		gohtmx.Form{
+			ID: "document",
+			Submit: func(data gohtmx.Data) (gohtmx.Data, error) {
+				document, ok := data["document"].(string)
+				if !ok {
+					return nil, fmt.Errorf("no document found")
 				}
-				return data.Merge(core.TemplateData{"document": document})
+				return gohtmx.Data{
+					"time": time.Now().Format(time.RFC3339Nano),
+				}, store.Set(document, data)
 			},
-			Content: gohtmx.Fragment{
-				gohtmx.InputHidden{Name: "document", Value: "{{.search}}"},
-				gohtmx.InputText{
-					Label: "First", Name: "first", Value: "{{.document.first}}",
-					Validate: func(r *http.Request) core.TemplateData {
-						data := gohtmx.LoadData("first")(r)
-						first, _ := data["first"].(string)
-						return core.TemplateData{
-							"modified": true,
-							"document": core.TemplateData{
-								"first": cases.Title(language.English).String(first),
-							},
-						}
-					},
-					Classes: []string{"input-group", "{{if .modified}}modified{{end}}"},
+			Content: AsCard(gohtmx.TWith{
+				Func: func(r *http.Request) gohtmx.Data {
+					data := gohtmx.GetDataFromRequest("search")(r)
+					var document any
+					search, ok := data["search"].(string)
+					if ok {
+						search = strings.ToLower(search)
+						data["search"] = search
+						document, _ = store.Get(search)
+					}
+					return data.Merge(gohtmx.Data{"document": document})
 				},
-				gohtmx.InputText{Label: "Last", Name: "last", Value: "{{.document.last}}", Classes: []string{"input-group"}},
-				gohtmx.InputText{Label: "Title", Name: "title", Value: "{{.document.title}}", Classes: []string{"input-group"}},
-				gohtmx.InputSubmit{Text: "Submit"},
-			},
-		}),
-		Error:   AsCard(gohtmx.Raw("{{.error}}")),
-		Success: AsCard(gohtmx.Raw("Success at {{.time}}!")),
+				Content: gohtmx.Fragment{
+					gohtmx.InputHidden{Name: "document", Value: "{{.search}}"},
+					gohtmx.InputText{
+						Label: "First", Name: "first", Value: "{{.document.first}}",
+						OnChange: func(r *http.Request) gohtmx.Data {
+							data := gohtmx.GetDataFromRequest("first")(r)
+							first, _ := data["first"].(string)
+							return gohtmx.Data{
+								"modified": true,
+								"document": gohtmx.Data{
+									"first": cases.Title(language.English).String(first),
+								},
+							}
+						},
+						Classes: []string{"input-group", "{{if .modified}}modified{{end}}"},
+					},
+					gohtmx.InputText{Label: "Last", Name: "last", Value: "{{.document.last}}", Classes: []string{"input-group"}},
+					gohtmx.InputText{Label: "Title", Name: "title", Value: "{{.document.title}}", Classes: []string{"input-group"}},
+					gohtmx.InputSubmit{Text: "Submit"},
+				},
+			}),
+			Target:  "#document-result",
+			Error:   AsCard(gohtmx.Raw("{{.error}}")),
+			Success: AsCard(gohtmx.Raw("Success at {{.time}}!")),
+		},
+		gohtmx.Div{ID: "document-result"},
 	}
 }
 

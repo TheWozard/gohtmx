@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/TheWozard/gohtmx/gohtmx"
+	"github.com/TheWozard/gohtmx"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,8 +20,8 @@ func TestPath_Init(t *testing.T) {
 			desc:      "Empty Path",
 			path:      gohtmx.Path{},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div></div>`,
-			err:       nil,
+			expected:  ``,
+			err:       gohtmx.ErrMissingID,
 		},
 		{
 			desc: "Path with Paths",
@@ -32,7 +32,7 @@ func TestPath_Init(t *testing.T) {
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{end}}</div>`,
+			expected:  `<div id="testID">{{if gohtmx_Path_Init_func1_0 $r}}content{{end}}</div>`,
 			err:       nil,
 		},
 		{
@@ -55,7 +55,7 @@ func TestPath_Init(t *testing.T) {
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
+			expected:  `<div id="testID">{{if gohtmx_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
 			err:       nil,
 		},
 		{
@@ -69,7 +69,7 @@ func TestPath_Init(t *testing.T) {
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
+			expected:  `<div id="testID">{{if gohtmx_Path_Init_func1_0 $r}}content{{else}}<div hx-get="/test" hx-target="#testID" hx-trigger="load"></div>{{end}}</div>`,
 			err:       nil,
 		},
 		{
@@ -82,19 +82,18 @@ func TestPath_Init(t *testing.T) {
 				},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div id="testID">{{if v2_Path_Init_func1_0 $r}}content{{else}}default{{end}}</div>`,
+			expected:  `<div id="testID">{{if gohtmx_Path_Init_func1_0 $r}}content{{else}}default{{end}}</div>`,
 			err:       nil,
 		},
 		{
 			desc: "Path with Attributes, Classes, and Style",
 			path: gohtmx.Path{
 				ID:      "testID",
-				Attr:    []gohtmx.Attr{{Name: "attr", Value: "value"}},
+				Attrs:   gohtmx.Attributes{}.Value("attr", "value"),
 				Classes: []string{"class1", "class2"},
-				Style:   []string{"style1", "style2"},
 			},
 			framework: gohtmx.NewDefaultFramework(),
-			expected:  `<div attr="value" id="testID" class="class1 class2" style="style1;style2"></div>`,
+			expected:  `<div attr="value" id="testID" class="class1 class2"></div>`,
 			err:       nil,
 		},
 	}
@@ -104,7 +103,7 @@ func TestPath_Init(t *testing.T) {
 			// Byte Validation
 			w := bytes.NewBuffer(nil)
 			err := tC.path.Init(tC.framework, w)
-			assert.Equal(t, tC.err, err)
+			assert.ErrorIs(t, err, tC.err)
 			assert.Equal(t, tC.expected, w.String())
 			// Template Validation
 			if tC.framework.CanTemplate() {

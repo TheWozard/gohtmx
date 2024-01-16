@@ -4,120 +4,112 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 
-	"github.com/TheWozard/gohtmx/gohtmx/core"
+	"github.com/TheWozard/gohtmx/core"
 )
 
-// -- Value Handlers --
-
-func RequestFloat(r *http.Request, key string, def float64) float64 {
-	raw := RequestValue(r, key)
-	if raw == "" {
-		return def
-	}
-	val, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return def
-	}
-	return val
-}
-
-func RequestValue(r *http.Request, key string) string {
-	if r.Method == http.MethodGet {
-		return r.URL.Query().Get(key)
-
-	}
-	err := r.ParseForm()
-	if err != nil {
-		return ""
-	}
-	return r.Form.Get(key)
-}
-
-// -- Components --
-
+// Form defines a HTML form and the submit action.
 type Form struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attrs   Attributes
 
-	// Action defines what happens when the form is submitted.
-	// core.TemplateData is the data that will be passed to the success Component.
-	// If an error occurs, the error Component will be rendered instead.
-	Action          func(w http.ResponseWriter, r *http.Request) (core.TemplateData, error)
-	CanAutoComplete func(r *http.Request) bool
-
-	// The interior contents of this element.
 	Content Component
-	Error   Component
+
+	// Submit defines what happens when the form is submitted. Returned Data will be passed to the success Component.
+	// If an error occurs, the error Component will be rendered instead.
+	// Submit is optional, as if omitted Success will be rendered with the request Data.
+	Submit func(d Data) (Data, error)
+	// UpdateParams defines Submit result values get set in the response.
+	UpdateParams []string
+	// UpdateForm adds an out of band update to the form on success.
+	// This will update the form regardless of what element calls the form interaction endpoint.
+	UpdateForm bool
+	// AutoSubmit defines when a form should be triggered on load automatically.
+	// For simple Submit cases a TCondition in the Target Component is recommended as this will
+	// load in the initial document and not require a second request.
+	AutoSubmit func(r *http.Request) bool
+	// Target defines CSS target to write either the Success or Error Component to.
+	Target string
+	// Error defines the Component to render on Submit error.
+	Error Component
+	// Success defines the Component to render on Submit success.
 	Success Component
 }
 
 func (fr Form) Init(f *Framework, w io.Writer) error {
+	// Validation/Setup
 	f = f.AtPath(fr.ID)
-	successHandler, err := f.NewTemplateHandler(fr.Success)
-	if err != nil {
-		return fmt.Errorf("failed to create success handler: %w", err)
-	}
-	errorHandler, err := f.NewTemplateHandler(fr.Error)
-	if err != nil {
-		return fmt.Errorf("failed to create success handler: %w", err)
-	}
-	f.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := r.ParseForm()
-		if err != nil {
-			errorHandler.ServeHTTPWithExtraData(w, r, core.TemplateData{"error": err.Error()})
-			return
+	v := NewValidate()
+	v.RequireID(fr.ID)
+	v.RequireTarget(fr.Target)
+	attrs := fr.Attrs.
+		Value("id", fr.ID).
+		Values("class", fr.Classes...).
+		Value("hx-post", f.Path()).
+		Value("hx-target", fr.Target).
+		Value("autocomplete", "off")
+	successComponent, errorComponent := fr.Success, fr.Error
+	if fr.UpdateForm {
+		successComponent = Fragment{
+			Tag{
+				Name:    "form",
+				Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
+				Content: MetaDisableInteraction{Content: fr.Content},
+			},
+			successComponent,
 		}
-		var data core.TemplateData
-		if fr.Action != nil {
-			data, err = fr.Action(w, r)
+		errorComponent = Fragment{
+			Tag{
+				Name:    "form",
+				Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
+				Content: MetaDisableInteraction{Content: fr.Content},
+			},
+			errorComponent,
+		}
+	}
+	successHandler := v.RequireTemplateHandler("Success", f, successComponent)
+	errorHandler := v.RequireTemplateHandler("Error", f, errorComponent)
+	if v.HasError() {
+		return AddPathToError(v.Error(), "Form")
+	}
+
+	// Interaction
+	f.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
+		data := GetAllDataFromRequest(r)
+		if fr.Submit != nil {
+			var err error
+			data, err = fr.Submit(data)
 			if err != nil {
-				errorHandler.ServeHTTPWithExtraData(w, r, core.TemplateData{"error": err.Error()})
+				errorHandler.ServeHTTPWithData(w, r, Data{"error": err})
 				return
 			}
 		}
-		successHandler.ServeHTTPWithExtraData(w, r, data)
+		if len(fr.UpdateParams) > 0 {
+			data.Subset(fr.UpdateParams...).SetInResponse(w, r)
+		}
+		successHandler.ServeHTTPWithData(w, r, data)
 	})
-	var autoload Component
-	if fr.CanAutoComplete != nil {
-		autoload = TCondition{
-			Condition: fr.CanAutoComplete,
-			Content:   Repeated{Content: fr.Success},
+
+	if fr.AutoSubmit != nil {
+		var err error
+		attrs, err = attrs.Condition(f, fr.AutoSubmit, Attrs().Value("hx-trigger", "load,submit"))
+		if err != nil {
+			return AddPathToError(err)
 		}
 	}
-	return Fragment{
-		Tag{
-			Name: "form",
-			Attrs: append(fr.Attr,
-				Attr{Name: "id", Value: fr.ID},
-				Attr{Name: "class", Value: strings.Join(fr.Classes, " ")},
-				Attr{Name: "style", Value: strings.Join(fr.Style, ";")},
-				Attr{Name: "hx-post", Value: f.Path()},
-				Attr{Name: "hx-target", Value: fmt.Sprintf("#%s-results", fr.ID)},
-				Attr{Name: "hx-trigger", Value: "submit"},
-				Attr{Name: "hx-swap", Value: "innerHTML"},
-				Attr{Name: "autocomplete", Value: "off"},
-			),
-			Content: fr.Content,
-		},
-		Div{
-			ID:      fmt.Sprintf("%s-results", fr.ID),
-			Content: autoload,
-		},
-	}.Init(f, w)
+
+	// Rendering
+	return AddPathToError(Tag{Name: "form", Attrs: attrs, Content: fr.Content}.Init(f, w), "Form")
 }
 
+// InputText defines an input text field with additional features for label, and onChange.
 type InputText struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attrs   Attributes
 
-	Validate   func(r *http.Request) core.TemplateData
+	OnChange   func(r *http.Request) Data
 	Additional Component
 
 	Name        string
@@ -132,55 +124,48 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 	// Label
 	if it.Label != "" {
 		content = append(content, Tag{
-			Name: "label",
-			Attrs: []Attr{
-				{Name: "for", Value: it.ID},
-			},
+			Name:    "label",
+			Attrs:   Attrs().Value("for", it.ID),
 			Content: Raw(it.Label),
 		})
 	}
 	// Input
-	inputAttr := []Attr{}
-	groupAttr := it.Attr
-	if it.Validate != nil {
-		inputAttr = append(inputAttr,
-			Attr{Name: "hx-trigger", Value: "keyup changed delay:500ms"},
-			Attr{Name: "hx-post", Value: c.Path()},
-		)
-		groupAttr = append(groupAttr,
-			Attr{Name: "hx-target", Value: "this"},
-			Attr{Name: "hx-swap", Value: "morph:outerHTML"},
-		)
+	inputAttr := Attrs()
+	groupAttr := it.Attrs
+	if it.OnChange != nil {
+		inputAttr = inputAttr.
+			Value("hx-trigger", "keyup changed delay:500ms").
+			Value("hx-post", c.Path())
+		groupAttr = groupAttr.
+			Value("hx-target", "this").
+			Value("hx-swap", "morph:outerHTML")
 		if f.IsInteractive() {
 			handler, err := f.NoMux().NewTemplateHandler(it)
 			if err != nil {
 				return fmt.Errorf("failed to create validation handler: %w", err)
 			}
 			c.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
-				data := it.Validate(r)
-				handler.ServeHTTPWithExtraData(w, r, data)
+				data := it.OnChange(r)
+				handler.ServeHTTPWithData(w, r, data)
 			})
 		}
 	}
 	content = append(content, Tag{
 		Name: "input",
-		Attrs: append(inputAttr,
-			Attr{Name: "type", Value: "text"},
-			Attr{Name: "name", Value: core.FirstNonEmptyString(it.Name, it.ID)},
-			Attr{Name: "placeholder", Value: core.FirstNonEmptyString(it.Placeholder, it.ID)},
-			Attr{Name: "value", Value: it.Value},
-		),
+		Attrs: inputAttr.
+			Value("type", "text").
+			Value("name", core.FirstNonEmptyString(it.Name, it.ID)).
+			Value("placeholder", core.FirstNonEmptyString(it.Placeholder, it.ID)).
+			Value("value", it.Value),
 	})
 
 	content = append(content, it.Additional)
 
 	return Tag{
 		Name: "div",
-		Attrs: append(groupAttr,
-			Attr{Name: "id", Value: it.ID},
-			Attr{Name: "class", Value: strings.Join(it.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(it.Style, ";")},
-		),
+		Attrs: groupAttr.
+			Value("id", it.ID).
+			Values("class", it.Classes...),
 		Content: content,
 	}.Init(f, w)
 }
@@ -192,44 +177,37 @@ type InputHidden struct {
 }
 
 func (ih InputHidden) Init(f *Framework, w io.Writer) error {
-	return Tag{
-		Name: "input",
-		Attrs: []Attr{
-			{Name: "id", Value: ih.ID},
-			{Name: "type", Value: "hidden"},
-			{Name: "name", Value: core.FirstNonEmptyString(ih.Name, ih.ID)},
-			{Name: "value", Value: ih.Value},
-		},
+	return Input{
+		ID:    ih.ID,
+		Type:  "hidden",
+		Name:  ih.Name,
+		Value: ih.Value,
 	}.Init(f, w)
 }
 
 type InputSubmit struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attrs   Attributes
 
 	Text string
 }
 
 func (is InputSubmit) Init(f *Framework, w io.Writer) error {
-	return Tag{
-		Name: "input",
-		Attrs: append(is.Attr,
-			Attr{Name: "id", Value: is.ID},
-			Attr{Name: "class", Value: strings.Join(is.Classes, " ")},
-			Attr{Name: "style", Value: strings.Join(is.Style, ";")},
-			Attr{Name: "type", Value: "submit"},
-			Attr{Name: "value", Value: is.Text},
-		),
+	return Input{
+		ID:      is.ID,
+		Type:    "submit",
+		Classes: is.Classes,
+		Attr:    is.Attrs,
+		Value:   is.Text,
+		Name:    "input",
 	}.Init(f, w)
 }
 
 type InputSearch struct {
 	ID      string
 	Classes []string
-	Style   []string
-	Attr    []Attr
+	Attrs   Attributes
 
 	Options     func(r *http.Request) []any
 	PrePopulate bool
@@ -246,15 +224,15 @@ func (it InputSearch) Init(f *Framework, w io.Writer) error {
 	addon := Fragment{
 		Raw("{{if .options}}"),
 		Div{
-			Style:   []string{"position: absolute; top: 100%; left: 0; right: 0;"},
+			Attrs:   Attrs().Values("style", "position: absolute;", "top: 100%;", "left: 0;", "right: 0;"),
 			Classes: []string{"menu"},
 			Content: Fragment{
 				Raw("{{range .options}}"),
-				Button{Content: Raw("{{.}}"), Attr: []Attr{
-					{Name: "hx-get", Value: f.Path() + "?search={{.}}"},
-					{Name: "hx-target", Value: it.Target},
-					{Name: "hx-swap", Value: "innerHTML"},
-				}},
+				Button{Content: Raw("{{.}}"), Attr: Attrs().
+					Value("hx-get", f.Path()+"?search={{.}}").
+					Value("hx-target", it.Target).
+					Value("hx-swap", "innerHTML"),
+				},
 				Raw("{{end}}"),
 			},
 		},
@@ -262,18 +240,17 @@ func (it InputSearch) Init(f *Framework, w io.Writer) error {
 	}
 	addon = append(addon, it.Additional)
 	var input Component
-	loadData := func(r *http.Request) core.TemplateData {
-		data := LoadData(it.Name)(r)
+	loadData := func(r *http.Request) Data {
+		data := GetDataFromRequest(it.Name)(r)
 		options := it.Options(r)
-		return data.Merge(core.TemplateData{"options": options})
+		return data.Merge(Data{"options": options})
 	}
 	input = InputText{
 		ID:      it.ID,
 		Classes: it.Classes,
-		Style:   it.Style,
-		Attr:    it.Attr,
+		Attrs:   it.Attrs,
 
-		Validate:   loadData,
+		OnChange:   loadData,
 		Additional: addon,
 
 		Name:        it.Name,
