@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,14 +15,14 @@ import (
 	"golang.org/x/text/language"
 )
 
-//go:embed assets/*
-var assets embed.FS
+// go:embed assets/*
+// var assets embed.FS
 
 func main() {
 	store := Store{Path: "./example/forms/store"}
 
 	f := gohtmx.NewDefaultFramework()
-	err := f.AddTemplateInteraction(
+	err := f.AddInteraction(
 		gohtmx.Document{
 			Header: gohtmx.Fragment{
 				gohtmx.Raw(`<meta charset="utf-8">`),
@@ -40,10 +39,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	h, err := f.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	mux := mux.NewRouter()
-	mux.PathPrefix("/assets/").Handler(http.FileServer(http.FS(assets)))
-	mux.PathPrefix("/").Handler(f)
+	// mux.PathPrefix("/assets/").Handler(http.FileServer(http.FS(assets)))
+	mux.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("./example/forms/assets"))))
+	mux.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate Delay
+		time.Sleep(200 * time.Millisecond)
+		h.ServeHTTP(w, r)
+	})
 
 	log.Default().Println("staring server at http://localhost:8080")
 	log.Fatal((&http.Server{
@@ -58,20 +66,28 @@ func Body(store Store) gohtmx.Component {
 		Attrs: gohtmx.Attrs().Value("hx-ext", "morph"),
 		Content: gohtmx.Fragment{
 			gohtmx.Div{ID: "error"},
-			gohtmx.Tag{Name: "navbar", Content: gohtmx.Fragment{
-				gohtmx.Button{
-					Attr:    gohtmx.Attrs().Value("hx-get", "/search").Value("hx-target", "#body"),
-					Content: gohtmx.Raw("Search"),
-				},
-			}},
+			Header(),
 			gohtmx.Path{
 				ID:          "body",
 				DefaultPath: "search",
 				Paths: map[string]gohtmx.Component{
-					"search": Search(store),
-					"foo":    gohtmx.Raw("foo"),
-					"bar":    gohtmx.Raw("bar"),
+					"search":  Search(store),
+					"confirm": gohtmx.Raw("foo"),
+					"bar":     gohtmx.Raw("bar"),
 				},
+			},
+		},
+	}
+}
+
+func Header() gohtmx.Component {
+	return gohtmx.Tag{Name: "header",
+		Content: gohtmx.Div{
+			UpdateWith: []string{"/search", "/confirm", "/bar"},
+			Content: gohtmx.Fragment{
+				TabSelector("Search", "/search", "#body"),
+				TabSelector("Confirm", "/confirm", "#body"),
+				TabSelector("Bar", "/bar", "#body"),
 			},
 		},
 	}
@@ -83,27 +99,30 @@ func Search(store Store) gohtmx.Component {
 			ID: "search",
 			Content: AsCard(gohtmx.TWith{
 				Func: gohtmx.GetDataFromRequest("search"),
-				Content: gohtmx.InputSearch{
-					Placeholder: "Search", Name: "search", Value: "{{.search}}", Classes: []string{"input-group"},
-					Options: func(r *http.Request) []any {
-						search, ok := gohtmx.GetDataFromRequest("search")(r)["search"].(string)
-						if !ok {
-							return nil
-						}
-						options := []any{}
-						for _, name := range store.List() {
-							if len(options) >= 5 {
-								break
+				Content: gohtmx.Fragment{
+					gohtmx.InputSearch{
+						Placeholder: "Search", Name: "search", Value: "{{.search}}", Classes: []string{"input-group"},
+						Options: func(r *http.Request) []any {
+							search, ok := gohtmx.GetDataFromRequest("search")(r)["search"].(string)
+							if !ok {
+								return nil
 							}
-							if strings.HasPrefix(strings.ToLower(name), strings.ToLower(search)) && name != search {
-								options = append(options, name)
+							options := []any{}
+							for _, name := range store.List() {
+								if len(options) >= 5 {
+									break
+								}
+								if strings.HasPrefix(strings.ToLower(name), strings.ToLower(search)) && name != search {
+									options = append(options, name)
+								}
 							}
-						}
-						return options
+							return options
+						},
+						PrePopulate: true,
+						Additional:  gohtmx.InputSubmit{Text: "Search"},
+						Target:      "#search-results",
+						AutoFocus:   true,
 					},
-					PrePopulate: true,
-					Additional:  gohtmx.InputSubmit{Text: "Search"},
-					Target:      "#search-results",
 				},
 			}),
 			UpdateParams: []string{"search"},
@@ -181,6 +200,14 @@ func Form(store Store) gohtmx.Component {
 			Success: AsCard(gohtmx.Raw("Success at {{.time}}!")),
 		},
 		gohtmx.Div{ID: "document-result"},
+	}
+}
+
+func TabSelector(text, path, target string) gohtmx.Component {
+	return gohtmx.Button{
+		Attr: gohtmx.Attrs().Value("hx-get", path).Value("hx-target", target).
+			Condition(gohtmx.IsRequestAtPath(path), gohtmx.Attrs().Value("class", "active")),
+		Content: gohtmx.Raw(text),
 	}
 }
 

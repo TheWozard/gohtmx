@@ -12,6 +12,7 @@ var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
 var ErrInvalidVariableName = fmt.Errorf("invalid variable name")
 var ErrMissingAction = fmt.Errorf("missing action")
 var ErrMissingFunction = fmt.Errorf("missing function")
+var ErrFailedToWriteTemplate = fmt.Errorf("failed to write template")
 
 // TAction defines a template action.
 type TAction string
@@ -54,7 +55,7 @@ func (t TBlock) Init(f *Framework, w io.Writer) error {
 	}
 	err = t.Content.Init(f, w)
 	if err != nil {
-		return fmt.Errorf("failed to write template block content: %w", err)
+		return AddMetaPathToError(err, "TBlock")
 	}
 	err = Raw("{{end}}").Init(f, w)
 	if err != nil {
@@ -86,7 +87,7 @@ func (t TBlocks) Init(f *Framework, w io.Writer) error {
 		}
 		err = b.Content.Init(f, w)
 		if err != nil {
-			return fmt.Errorf("failed to write template blocks content[%d]: %w", i, err)
+			return AddMetaPathToError(err, fmt.Sprintf("TBlocks[%d]", i))
 		}
 	}
 	err := Raw("{{end}}").Init(f, w)
@@ -138,14 +139,10 @@ func (t TWith) Init(f *Framework, w io.Writer) error {
 	}
 	id := f.Generator.NewFunctionID(t.Func)
 	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
-	err := TBlock{
+	return AddOrUpgradePathInError(TBlock{
 		Action:  fmt.Sprintf(`with %s $r`, id),
 		Content: t.Content,
-	}.Init(f, w)
-	if err != nil {
-		return fmt.Errorf("failed to write template with: %w", err)
-	}
-	return nil
+	}.Init(f, w), "TWith")
 }
 
 // TRange defines a template block to range over a template . variable.
@@ -250,6 +247,49 @@ func (t TConditions) Init(f *Framework, w io.Writer) error {
 	err := conditions.Init(f, w)
 	if err != nil {
 		return fmt.Errorf("failed to write conditions: %w", err)
+	}
+	return nil
+}
+
+type TMultiComponent struct {
+	Select  func(r *http.Request) (int, Data)
+	Options []Component
+}
+
+func (t TMultiComponent) Init(f *Framework, w io.Writer) error {
+	if !f.CanTemplate() {
+		return AddPathToError(ErrCannotTemplate, "TMultiComponent")
+	}
+	if t.Select == nil {
+		return AddPathToError(ErrMissingFunction, "TMultiComponent")
+	}
+	handlers := make([]*TemplateHandler, len(t.Options))
+	for i, option := range t.Options {
+		h, err := NewTemplateHandler(f, option)
+		if err != nil {
+			return AddPathToError(ErrFailedToWriteTemplate, fmt.Sprintf("TMultiComponent[%d]", i))
+		}
+		handlers[i] = h
+	}
+	// Defining the actual function that is called during the template execution.
+	dynamic := func(r *http.Request) template.HTML {
+		index, data := t.Select(r)
+		if index < 0 || index >= len(handlers) {
+			// TODO: some way to signal back up that the result contains an error.
+			return template.HTML(fmt.Sprintf(`invalid index %d`, index))
+		}
+		raw, err := handlers[index].ExecuteWith(r, data)
+		if err != nil {
+			return template.HTML(fmt.Sprintf(`failed to render index %d: %s`, index, err.Error()))
+		}
+		return template.HTML(raw)
+	}
+	// Attaching into the overall template.
+	id := f.Generator.NewFunctionID(dynamic)
+	f.Template = f.Template.Funcs(template.FuncMap{id: dynamic})
+	err := TAction(id+" $r").Init(f, w)
+	if err != nil {
+		return AddPathToError(err, "TMultiComponent")
 	}
 	return nil
 }

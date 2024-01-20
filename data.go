@@ -47,6 +47,16 @@ func GetAllDataFromRequest(r *http.Request) Data {
 	return data
 }
 
+func UpdateParams(names ...string) Middleware {
+	loader := GetDataFromRequest(names...)
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			loader(r).SetInResponse(w, r)
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 // Data represents a neutral representation of data that is passed through any method HTMX requests.
 type Data map[string]any
 

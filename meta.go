@@ -69,3 +69,19 @@ type MetaAtPath struct {
 func (m MetaAtPath) Init(f *Framework, w io.Writer) error {
 	return m.Content.Init(f.AtPath(m.Path), w)
 }
+
+type UpdateWith struct {
+	Paths   []string
+	Content Component
+}
+
+func (u UpdateWith) Init(f *Framework, w io.Writer) error {
+	content, err := f.Mono(u.Content)
+	if err != nil {
+		return AddPathToError(err, "UpdateWith")
+	}
+	for _, path := range u.Paths {
+		f.AtPath(path).AddOutOfBand(content)
+	}
+	return AddPathToError(content.Init(f, w), "UpdateWith")
+}

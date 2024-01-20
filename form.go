@@ -1,7 +1,6 @@
 package gohtmx
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 
@@ -22,8 +21,9 @@ type Form struct {
 	Submit func(d Data) (Data, error)
 	// UpdateParams defines Submit result values get set in the response.
 	UpdateParams []string
-	// UpdateForm adds an out of band update to the form on success.
+	// UpdateForm adds an out of band update to the form on success or error.
 	// This will update the form regardless of what element calls the form interaction endpoint.
+	// This does require the form to load values from request data.
 	UpdateForm bool
 	// AutoSubmit defines when a form should be triggered on load automatically.
 	// For simple Submit cases a TCondition in the Target Component is recommended as this will
@@ -43,64 +43,60 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 	v := NewValidate()
 	v.RequireID(fr.ID)
 	v.RequireTarget(fr.Target)
+	v.RequireComponent("Success", fr.Success)
+	v.RequireComponent("Error", fr.Error)
+	if v.HasError() {
+		return AddMetaPathToError(v.Error(), "Form")
+	}
+
+	content := fr.Content
 	attrs := fr.Attrs.
 		Value("id", fr.ID).
 		Values("class", fr.Classes...).
 		Value("hx-post", f.Path()).
 		Value("hx-target", fr.Target).
 		Value("autocomplete", "off")
-	successComponent, errorComponent := fr.Success, fr.Error
 	if fr.UpdateForm {
-		successComponent = Fragment{
-			Tag{
-				Name:    "form",
-				Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
-				Content: MetaDisableInteraction{Content: fr.Content},
-			},
-			successComponent,
+		var err error
+		content, err = f.Mono(content)
+		if err != nil {
+			return AddMetaPathToError(err, "Form")
 		}
-		errorComponent = Fragment{
-			Tag{
-				Name:    "form",
-				Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
-				Content: MetaDisableInteraction{Content: fr.Content},
-			},
-			errorComponent,
-		}
-	}
-	successHandler := v.RequireTemplateHandler("Success", f, successComponent)
-	errorHandler := v.RequireTemplateHandler("Error", f, errorComponent)
-	if v.HasError() {
-		return AddPathToError(v.Error(), "Form")
+		f.AddOutOfBand(Tag{
+			Name:    "form",
+			Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
+			Content: content,
+		})
 	}
 
-	// Interaction
-	f.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
-		data := GetAllDataFromRequest(r)
-		if fr.Submit != nil {
-			var err error
-			data, err = fr.Submit(data)
-			if err != nil {
-				errorHandler.ServeHTTPWithData(w, r, Data{"error": err})
-				return
+	err := f.AddInteraction(TMultiComponent{
+		Select: func(r *http.Request) (int, Data) {
+			data := GetAllDataFromRequest(r)
+			if fr.Submit == nil {
+				return 0, data
 			}
-		}
-		if len(fr.UpdateParams) > 0 {
-			data.Subset(fr.UpdateParams...).SetInResponse(w, r)
-		}
-		successHandler.ServeHTTPWithData(w, r, data)
+			data, err := fr.Submit(data)
+			if err != nil {
+				return 1, Data{"error": err}
+			}
+			return 0, data
+		},
+		Options: []Component{fr.Success, fr.Error},
 	})
+	if err != nil {
+		return AddMetaPathToError(err, "Form")
+	}
 
 	if fr.AutoSubmit != nil {
-		var err error
-		attrs, err = attrs.Condition(f, fr.AutoSubmit, Attrs().Value("hx-trigger", "load,submit"))
-		if err != nil {
-			return AddPathToError(err)
-		}
+		attrs = attrs.Condition(fr.AutoSubmit, Attrs().Value("hx-trigger", "load,submit"))
+	}
+
+	if len(fr.UpdateParams) > 0 {
+		f.Use(UpdateParams(fr.UpdateParams...))
 	}
 
 	// Rendering
-	return AddPathToError(Tag{Name: "form", Attrs: attrs, Content: fr.Content}.Init(f, w), "Form")
+	return AddMetaPathToError(Tag{Name: "form", Attrs: attrs, Content: content}.Init(f, w), "Form")
 }
 
 // InputText defines an input text field with additional features for label, and onChange.
@@ -116,12 +112,13 @@ type InputText struct {
 	Label       string
 	Placeholder string
 	Value       string
+	AutoFocus   bool
+	Disabled    bool
 }
 
 func (it InputText) Init(f *Framework, w io.Writer) error {
-	c := f.AtPath(core.FirstNonEmptyString(it.ID, it.Name))
 	content := Fragment{}
-	// Label
+	f = f.AtPath(core.FirstNonEmptyString(it.ID, it.Name))
 	if it.Label != "" {
 		content = append(content, Tag{
 			Name:    "label",
@@ -129,26 +126,17 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 			Content: Raw(it.Label),
 		})
 	}
-	// Input
 	inputAttr := Attrs()
 	groupAttr := it.Attrs
 	if it.OnChange != nil {
 		inputAttr = inputAttr.
-			Value("hx-trigger", "keyup changed delay:500ms").
-			Value("hx-post", c.Path())
+			Value("hx-trigger", "keyup changed delay:400ms").
+			Value("hx-disabled-elt", "this").
+			Value("hx-post", f.Path()).
+			Flag("autofocus", it.AutoFocus)
 		groupAttr = groupAttr.
 			Value("hx-target", "this").
 			Value("hx-swap", "morph:outerHTML")
-		if f.IsInteractive() {
-			handler, err := f.NoMux().NewTemplateHandler(it)
-			if err != nil {
-				return fmt.Errorf("failed to create validation handler: %w", err)
-			}
-			c.AddInteractionFunc(func(w http.ResponseWriter, r *http.Request) {
-				data := it.OnChange(r)
-				handler.ServeHTTPWithData(w, r, data)
-			})
-		}
 	}
 	content = append(content, Tag{
 		Name: "input",
@@ -158,50 +146,31 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 			Value("placeholder", core.FirstNonEmptyString(it.Placeholder, it.ID)).
 			Value("value", it.Value),
 	})
-
-	content = append(content, it.Additional)
-
-	return Tag{
+	var result Component
+	result = Tag{
 		Name: "div",
 		Attrs: groupAttr.
 			Value("id", it.ID).
 			Values("class", it.Classes...),
-		Content: content,
-	}.Init(f, w)
-}
+		Content: append(content, it.Additional),
+	}
 
-type InputHidden struct {
-	ID    string
-	Name  string
-	Value string
-}
+	if it.OnChange != nil {
+		var err error
+		result, err = f.Mono(result)
+		if err != nil {
+			return AddPathToError(err, "InputText")
+		}
+		err = f.AddInteraction(TWith{
+			Func:    it.OnChange,
+			Content: result,
+		})
+		if err != nil {
+			return AddPathToError(err, "InputText")
+		}
+	}
 
-func (ih InputHidden) Init(f *Framework, w io.Writer) error {
-	return Input{
-		ID:    ih.ID,
-		Type:  "hidden",
-		Name:  ih.Name,
-		Value: ih.Value,
-	}.Init(f, w)
-}
-
-type InputSubmit struct {
-	ID      string
-	Classes []string
-	Attrs   Attributes
-
-	Text string
-}
-
-func (is InputSubmit) Init(f *Framework, w io.Writer) error {
-	return Input{
-		ID:      is.ID,
-		Type:    "submit",
-		Classes: is.Classes,
-		Attr:    is.Attrs,
-		Value:   is.Text,
-		Name:    "input",
-	}.Init(f, w)
+	return AddPathToError(result.Init(f, w), "InputText")
 }
 
 type InputSearch struct {
@@ -218,6 +187,8 @@ type InputSearch struct {
 	Label       string
 	Placeholder string
 	Value       string
+	AutoFocus   bool
+	Disabled    bool
 }
 
 func (it InputSearch) Init(f *Framework, w io.Writer) error {
@@ -257,6 +228,8 @@ func (it InputSearch) Init(f *Framework, w io.Writer) error {
 		Label:       it.Label,
 		Placeholder: it.Placeholder,
 		Value:       it.Value,
+		AutoFocus:   it.AutoFocus,
+		Disabled:    it.Disabled,
 	}
 	if it.PrePopulate {
 		input = TWith{
@@ -265,4 +238,40 @@ func (it InputSearch) Init(f *Framework, w io.Writer) error {
 		}
 	}
 	return input.Init(f, w)
+}
+
+// InputHidden defines a hidden input element. This is useful for storing data in a form that isn't visible.
+type InputHidden struct {
+	ID    string
+	Name  string
+	Value string
+}
+
+func (ih InputHidden) Init(f *Framework, w io.Writer) error {
+	return Input{
+		ID:    ih.ID,
+		Type:  "hidden",
+		Name:  ih.Name,
+		Value: ih.Value,
+	}.Init(f, w)
+}
+
+// InputSubmit defines an input submit button.
+type InputSubmit struct {
+	ID      string
+	Classes []string
+	Attrs   Attributes
+
+	Text string
+}
+
+func (is InputSubmit) Init(f *Framework, w io.Writer) error {
+	return Input{
+		ID:      is.ID,
+		Type:    "submit",
+		Classes: is.Classes,
+		Attr:    is.Attrs,
+		Value:   is.Text,
+		Name:    "input",
+	}.Init(f, w)
 }

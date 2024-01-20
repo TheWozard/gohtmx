@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+func IsRequestAtPath(path string) func(r *http.Request) bool {
+	return func(r *http.Request) bool {
+		return strings.HasPrefix(r.URL.Path, path) &&
+			(len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/')
+	}
+}
+
 type Path struct {
 	ID      string
 	Classes []string
@@ -23,8 +30,10 @@ type Path struct {
 func (p Path) Init(f *Framework, w io.Writer) error {
 	v := NewValidate()
 	v.RequireID(p.ID)
-	_, ok := p.Paths[p.DefaultPath]
-	v.Require(ok, "DefaultPath must be a valid path")
+	if p.DefaultPath != "" {
+		_, ok := p.Paths[p.DefaultPath]
+		v.Require(ok, "DefaultPath must be a valid path")
+	}
 	if v.HasError() {
 		return fmt.Errorf("Path failed to validate: %w", v.Error())
 	}
@@ -33,21 +42,26 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 	for key, content := range p.Paths {
 		f := f.AtPath(key)
 		path := f.Path()
+		mono, err := f.Mono(content)
+		if err != nil {
+			return AddMetaPathToError(err, "Path")
+		}
 		// Initial load.
 		conditions = append(conditions, TCondition{
-			Condition: func(r *http.Request) bool {
-				return strings.HasPrefix(r.URL.Path, path) &&
-					(len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/')
-			},
-			Content: MetaAtPath{Path: key, Content: content},
+			Condition: IsRequestAtPath(path),
+			Content:   mono,
 		})
 
 		// Interactions for other components to use. Initial load will mount any interactions.
-		err := f.AddTemplateInteraction(MetaDisableInteraction{Content: content}, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add("HX-Replace-Url", path)
+		f.Use(func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Add("HX-Replace-Url", path)
+				h.ServeHTTP(w, r)
+			})
 		})
+		err = f.AddInteraction(mono)
 		if err != nil {
-			return fmt.Errorf("failed to add path interaction at %s: %w", path, err)
+			return AddMetaPathToError(err, "Path")
 		}
 	}
 	if p.DefaultPath != "" && p.Paths[p.DefaultPath] != nil {
@@ -64,11 +78,11 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 			Content: p.DefaultComponent,
 		})
 	}
-	return Tag{
+	return AddMetaPathToError(Tag{
 		Name: "div",
 		Attrs: p.Attrs.
 			Value("id", p.ID).
 			Value("class", strings.Join(p.Classes, " ")),
 		Content: conditions,
-	}.Init(f, w)
+	}.Init(f, w), "Path")
 }

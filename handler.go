@@ -43,11 +43,19 @@ func (t TemplateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (t TemplateHandler) ServeHTTPWithData(w http.ResponseWriter, r *http.Request, data Data) {
+	raw, err := t.ExecuteWith(r, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write(raw)
+}
+
+func (t TemplateHandler) ExecuteWith(r *http.Request, data Data) ([]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 	err := t.Template.ExecuteTemplate(buffer, t.Name, data.Merge(Data{"request": r}))
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`error rendering template interaction: , %s`, err.Error()), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf(`failed to render template %s: %w`, t.Name, err)
 	}
-	_, _ = w.Write(buffer.Bytes())
+	return buffer.Bytes(), err
 }
