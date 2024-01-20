@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/TheWozard/gohtmx/internal"
 )
 
 func IsRequestAtPath(path string) func(r *http.Request) bool {
@@ -28,8 +30,8 @@ type Path struct {
 }
 
 func (p Path) Init(f *Framework, w io.Writer) error {
-	v := NewValidate()
-	v.RequireID(p.ID)
+	v := internal.NewValidate()
+	v.Require(p.ID != "", "ID required")
 	if p.DefaultPath != "" {
 		_, ok := p.Paths[p.DefaultPath]
 		v.Require(ok, "DefaultPath must be a valid path")
@@ -44,7 +46,7 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 		path := f.Path()
 		mono, err := f.Mono(content)
 		if err != nil {
-			return AddMetaPathToError(err, "Path")
+			return internal.ErrEnclosePath(err, "Path")
 		}
 		// Initial load.
 		conditions = append(conditions, TCondition{
@@ -61,16 +63,16 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 		})
 		err = f.AddInteraction(mono)
 		if err != nil {
-			return AddMetaPathToError(err, "Path")
+			return internal.ErrEnclosePath(err, "Path")
 		}
 	}
 	if p.DefaultPath != "" && p.Paths[p.DefaultPath] != nil {
 		// Default loading options - because we cant set headers on load we do the next best with an onload callback.
 		conditions = append(conditions, TCondition{
 			Content: Div{Attrs: Attributes{}.
-				Value("hx-get", f.Path(p.DefaultPath)).
-				Value("hx-target", "#"+p.ID).
-				Value("hx-trigger", "load"),
+				String("hx-get", f.Path(p.DefaultPath)).
+				String("hx-target", "#"+p.ID).
+				String("hx-trigger", "load"),
 			},
 		})
 	} else if p.DefaultComponent != nil {
@@ -78,11 +80,11 @@ func (p Path) Init(f *Framework, w io.Writer) error {
 			Content: p.DefaultComponent,
 		})
 	}
-	return AddMetaPathToError(Tag{
+	return internal.ErrEnclosePath(Tag{
 		Name: "div",
 		Attrs: p.Attrs.
-			Value("id", p.ID).
-			Value("class", strings.Join(p.Classes, " ")),
+			String("id", p.ID).
+			String("class", strings.Join(p.Classes, " ")),
 		Content: conditions,
 	}.Init(f, w), "Path")
 }

@@ -51,15 +51,6 @@ func (m MetaView) Init(f *Framework, w io.Writer) error {
 	return contentErr
 }
 
-// MetaDisableInteraction defines a component that disables interaction without raising interaction errors.
-type MetaDisableInteraction struct {
-	Content Component
-}
-
-func (m MetaDisableInteraction) Init(f *Framework, w io.Writer) error {
-	return m.Content.Init(f.NoMux(), w)
-}
-
 // MetaAtPath defines a component that modifies the path of the framework for its Content.
 type MetaAtPath struct {
 	Path    string
@@ -70,18 +61,22 @@ func (m MetaAtPath) Init(f *Framework, w io.Writer) error {
 	return m.Content.Init(f.AtPath(m.Path), w)
 }
 
-type UpdateWith struct {
-	Paths   []string
+// MetaMono defines a component that caches the result of its Content. This is useful to use a component in multiple places
+// while avoiding conflicts when attaching interactions.
+type MetaMono struct {
 	Content Component
+	Cache   Component
 }
 
-func (u UpdateWith) Init(f *Framework, w io.Writer) error {
-	content, err := f.Mono(u.Content)
+func (m *MetaMono) Init(f *Framework, w io.Writer) error {
+	if m.Cache != nil {
+		return m.Cache.Init(f, w)
+	}
+	data := bytes.NewBuffer(nil)
+	err := m.Content.Init(f, data)
 	if err != nil {
-		return AddPathToError(err, "UpdateWith")
+		return err
 	}
-	for _, path := range u.Paths {
-		f.AtPath(path).AddOutOfBand(content)
-	}
-	return AddPathToError(content.Init(f, w), "UpdateWith")
+	m.Cache = Raw(data.String())
+	return m.Cache.Init(f, w)
 }

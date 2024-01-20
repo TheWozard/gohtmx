@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/TheWozard/gohtmx/internal"
 )
 
 var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
@@ -13,6 +15,7 @@ var ErrInvalidVariableName = fmt.Errorf("invalid variable name")
 var ErrMissingAction = fmt.Errorf("missing action")
 var ErrMissingFunction = fmt.Errorf("missing function")
 var ErrFailedToWriteTemplate = fmt.Errorf("failed to write template")
+var ErrMissingContent = fmt.Errorf("missing content")
 
 // TAction defines a template action.
 type TAction string
@@ -55,7 +58,7 @@ func (t TBlock) Init(f *Framework, w io.Writer) error {
 	}
 	err = t.Content.Init(f, w)
 	if err != nil {
-		return AddMetaPathToError(err, "TBlock")
+		return internal.ErrEnclosePath(err, "TBlock")
 	}
 	err = Raw("{{end}}").Init(f, w)
 	if err != nil {
@@ -87,7 +90,7 @@ func (t TBlocks) Init(f *Framework, w io.Writer) error {
 		}
 		err = b.Content.Init(f, w)
 		if err != nil {
-			return AddMetaPathToError(err, fmt.Sprintf("TBlocks[%d]", i))
+			return internal.ErrEnclosePath(err, fmt.Sprintf("TBlocks[%d]", i))
 		}
 	}
 	err := Raw("{{end}}").Init(f, w)
@@ -139,7 +142,7 @@ func (t TWith) Init(f *Framework, w io.Writer) error {
 	}
 	id := f.Generator.NewFunctionID(t.Func)
 	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
-	return AddOrUpgradePathInError(TBlock{
+	return internal.ErrEnclosePath(TBlock{
 		Action:  fmt.Sprintf(`with %s $r`, id),
 		Content: t.Content,
 	}.Init(f, w), "TWith")
@@ -258,16 +261,16 @@ type TMultiComponent struct {
 
 func (t TMultiComponent) Init(f *Framework, w io.Writer) error {
 	if !f.CanTemplate() {
-		return AddPathToError(ErrCannotTemplate, "TMultiComponent")
+		return internal.ErrPrependPath(ErrCannotTemplate, "TMultiComponent")
 	}
 	if t.Select == nil {
-		return AddPathToError(ErrMissingFunction, "TMultiComponent")
+		return internal.ErrPrependPath(ErrMissingFunction, "TMultiComponent")
 	}
 	handlers := make([]*TemplateHandler, len(t.Options))
 	for i, option := range t.Options {
 		h, err := NewTemplateHandler(f, option)
 		if err != nil {
-			return AddPathToError(ErrFailedToWriteTemplate, fmt.Sprintf("TMultiComponent[%d]", i))
+			return internal.ErrPrependPath(ErrFailedToWriteTemplate, fmt.Sprintf("TMultiComponent[%d]", i))
 		}
 		handlers[i] = h
 	}
@@ -289,7 +292,7 @@ func (t TMultiComponent) Init(f *Framework, w io.Writer) error {
 	f.Template = f.Template.Funcs(template.FuncMap{id: dynamic})
 	err := TAction(id+" $r").Init(f, w)
 	if err != nil {
-		return AddPathToError(err, "TMultiComponent")
+		return internal.ErrPrependPath(err, "TMultiComponent")
 	}
 	return nil
 }

@@ -8,10 +8,14 @@ import (
 	"strings"
 
 	"github.com/TheWozard/gohtmx/core"
+	"github.com/TheWozard/gohtmx/internal"
 	"github.com/go-chi/chi/v5"
 )
 
-var ErrInteractionExists = fmt.Errorf("interaction already exists")
+var (
+	ErrInteractionExists = fmt.Errorf("interaction already exists")
+	ErrNilComponent      = fmt.Errorf("component is required")
+)
 
 func NewDefaultFramework() *Framework {
 	return &Framework{
@@ -193,7 +197,7 @@ func (f *Framework) Mono(component Component) (Component, error) {
 	data := bytes.NewBuffer(nil)
 	err := component.Init(f, data)
 	if err != nil {
-		return nil, AddMetaPathToError(err, "Mono")
+		return nil, internal.ErrEnclosePath(err, "Mono")
 	}
 	return Raw(data.String()), nil
 }

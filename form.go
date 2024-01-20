@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/TheWozard/gohtmx/core"
+	"github.com/TheWozard/gohtmx/internal"
 )
 
 // Form defines a HTML form and the submit action.
@@ -40,32 +41,27 @@ type Form struct {
 func (fr Form) Init(f *Framework, w io.Writer) error {
 	// Validation/Setup
 	f = f.AtPath(fr.ID)
-	v := NewValidate()
-	v.RequireID(fr.ID)
-	v.RequireTarget(fr.Target)
-	v.RequireComponent("Success", fr.Success)
-	v.RequireComponent("Error", fr.Error)
+	v := internal.NewValidate()
+	v.Require(fr.ID != "", "ID required")
+	v.Require(fr.Target != "", "Target required")
+	v.Require(fr.Success != nil, "Success required")
+	v.Require(fr.Error != nil, "Error required")
 	if v.HasError() {
-		return AddMetaPathToError(v.Error(), "Form")
+		return internal.ErrEnclosePath(v.Error(), "Form")
 	}
 
-	content := fr.Content
-	attrs := fr.Attrs.
-		Value("id", fr.ID).
-		Values("class", fr.Classes...).
-		Value("hx-post", f.Path()).
-		Value("hx-target", fr.Target).
-		Value("autocomplete", "off")
+	fr.Attrs = fr.Attrs.
+		String("id", fr.ID).
+		Slice("class", fr.Classes...).
+		String("hx-post", f.Path()).
+		String("hx-target", fr.Target).
+		String("autocomplete", "off")
 	if fr.UpdateForm {
-		var err error
-		content, err = f.Mono(content)
-		if err != nil {
-			return AddMetaPathToError(err, "Form")
-		}
+		fr.Content = &MetaMono{Content: fr.Content}
 		f.AddOutOfBand(Tag{
 			Name:    "form",
-			Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+fr.ID),
-			Content: content,
+			Attrs:   fr.Attrs.Copy().String("hx-swap-oob", "true").String("hx-target", "#"+fr.ID),
+			Content: fr.Content,
 		})
 	}
 
@@ -84,11 +80,11 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 		Options: []Component{fr.Success, fr.Error},
 	})
 	if err != nil {
-		return AddMetaPathToError(err, "Form")
+		return internal.ErrEnclosePath(err, "Form")
 	}
 
 	if fr.AutoSubmit != nil {
-		attrs = attrs.Condition(fr.AutoSubmit, Attrs().Value("hx-trigger", "load,submit"))
+		fr.Attrs = fr.Attrs.If(fr.AutoSubmit, Attrs().String("hx-trigger", "load,submit"))
 	}
 
 	if len(fr.UpdateParams) > 0 {
@@ -96,7 +92,7 @@ func (fr Form) Init(f *Framework, w io.Writer) error {
 	}
 
 	// Rendering
-	return AddMetaPathToError(Tag{Name: "form", Attrs: attrs, Content: content}.Init(f, w), "Form")
+	return internal.ErrEnclosePath(Tag{Name: "form", Attrs: fr.Attrs, Content: fr.Content}.Init(f, w), "Form")
 }
 
 // InputText defines an input text field with additional features for label, and onChange.
@@ -122,7 +118,7 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 	if it.Label != "" {
 		content = append(content, Tag{
 			Name:    "label",
-			Attrs:   Attrs().Value("for", it.ID),
+			Attrs:   Attrs().String("for", it.ID),
 			Content: Raw(it.Label),
 		})
 	}
@@ -130,28 +126,28 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 	groupAttr := it.Attrs
 	if it.OnChange != nil {
 		inputAttr = inputAttr.
-			Value("hx-trigger", "keyup changed delay:400ms").
-			Value("hx-disabled-elt", "this").
-			Value("hx-post", f.Path()).
-			Flag("autofocus", it.AutoFocus)
+			String("hx-trigger", "keyup changed delay:400ms").
+			String("hx-disabled-elt", "this").
+			String("hx-post", f.Path()).
+			Bool("autofocus", it.AutoFocus)
 		groupAttr = groupAttr.
-			Value("hx-target", "this").
-			Value("hx-swap", "morph:outerHTML")
+			String("hx-target", "this").
+			String("hx-swap", "morph:outerHTML")
 	}
 	content = append(content, Tag{
 		Name: "input",
 		Attrs: inputAttr.
-			Value("type", "text").
-			Value("name", core.FirstNonEmptyString(it.Name, it.ID)).
-			Value("placeholder", core.FirstNonEmptyString(it.Placeholder, it.ID)).
-			Value("value", it.Value),
+			String("type", "text").
+			String("name", core.FirstNonEmptyString(it.Name, it.ID)).
+			String("placeholder", core.FirstNonEmptyString(it.Placeholder, it.ID)).
+			String("value", it.Value),
 	})
 	var result Component
 	result = Tag{
 		Name: "div",
 		Attrs: groupAttr.
-			Value("id", it.ID).
-			Values("class", it.Classes...),
+			String("id", it.ID).
+			Slice("class", it.Classes...),
 		Content: append(content, it.Additional),
 	}
 
@@ -159,18 +155,18 @@ func (it InputText) Init(f *Framework, w io.Writer) error {
 		var err error
 		result, err = f.Mono(result)
 		if err != nil {
-			return AddPathToError(err, "InputText")
+			return internal.ErrPrependPath(err, "InputText")
 		}
 		err = f.AddInteraction(TWith{
 			Func:    it.OnChange,
 			Content: result,
 		})
 		if err != nil {
-			return AddPathToError(err, "InputText")
+			return internal.ErrPrependPath(err, "InputText")
 		}
 	}
 
-	return AddPathToError(result.Init(f, w), "InputText")
+	return internal.ErrPrependPath(result.Init(f, w), "InputText")
 }
 
 type InputSearch struct {
@@ -195,14 +191,14 @@ func (it InputSearch) Init(f *Framework, w io.Writer) error {
 	addon := Fragment{
 		Raw("{{if .options}}"),
 		Div{
-			Attrs:   Attrs().Values("style", "position: absolute;", "top: 100%;", "left: 0;", "right: 0;"),
+			Attrs:   Attrs().Slice("style", "position: absolute;", "top: 100%;", "left: 0;", "right: 0;"),
 			Classes: []string{"menu"},
 			Content: Fragment{
 				Raw("{{range .options}}"),
 				Button{Content: Raw("{{.}}"), Attr: Attrs().
-					Value("hx-get", f.Path()+"?search={{.}}").
-					Value("hx-target", it.Target).
-					Value("hx-swap", "innerHTML"),
+					String("hx-get", f.Path()+"?search={{.}}").
+					String("hx-target", it.Target).
+					String("hx-swap", "innerHTML"),
 				},
 				Raw("{{end}}"),
 			},

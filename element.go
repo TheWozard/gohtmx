@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/TheWozard/gohtmx/internal"
 )
 
 // Raw defines the most generic Component that directly renders the string as HTML
@@ -26,7 +28,8 @@ func Attrs(attrs ...string) Attributes {
 	return Attributes(components)
 }
 
-// Attributes defines a slice of HTML attributes.
+// Attributes defines a slice of HTML attributes. Functions hung off of this type are chainable, and designed
+// to handle empty values. Empty values will skip adding the attribute making it safe to call without checking for empty values.
 type Attributes Fragment
 
 func (a Attributes) Init(f *Framework, w io.Writer) error {
@@ -34,12 +37,12 @@ func (a Attributes) Init(f *Framework, w io.Writer) error {
 		if i > 0 {
 			_, err := w.Write([]byte(" "))
 			if err != nil {
-				return AddPathToError(fmt.Errorf("failed to write attribute separator: %w", err), "attributes")
+				return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute separator: %w", err), "Attributes")
 			}
 		}
 		err := attr.Init(f, w)
 		if err != nil {
-			return AddPathToError(fmt.Errorf("failed to write attribute: %w", err), "attributes")
+			return internal.ErrPrependPath(err, "Attributes")
 		}
 	}
 	return nil
@@ -53,32 +56,46 @@ func (a Attributes) IsEmpty() bool {
 	return len(a) == 0
 }
 
-// Value adds a named value to the attributes if it is not empty.
-func (a Attributes) Value(name, value string) Attributes {
+// String adds a named value to the attributes if it is not empty.
+func (a Attributes) String(name, value string) Attributes {
 	if value != "" {
 		a = append(a, Raw(fmt.Sprintf(`%s="%s"`, name, value)))
 	}
 	return a
 }
 
-// Values adds a named value to the attributes if the values are not empty.
-func (a Attributes) Values(name string, values ...string) Attributes {
-	return a.Value(name, strings.Join(values, " "))
+// Slice adds a named value to the attributes if the values are not empty.
+func (a Attributes) Slice(name string, values ...string) Attributes {
+	return a.String(name, strings.Join(values, " "))
 }
 
-// Flag adds a named flag to the attributes if active is true.
-func (a Attributes) Flag(name string, active bool) Attributes {
+// Bool adds a named flag to the attributes if active is true.
+func (a Attributes) Bool(name string, active bool) Attributes {
 	if active {
 		a = append(a, Raw(name))
 	}
 	return a
 }
 
-// Condition adds the given attributes if the condition is true.
-func (a Attributes) Condition(condition func(*http.Request) bool, attrs Attributes) Attributes {
+// If adds the given attributes if the condition is true.
+func (a Attributes) If(condition func(*http.Request) bool, positive Attributes) Attributes {
 	a = append(a, TCondition{
 		Condition: condition,
-		Content:   attrs,
+		Content:   positive,
+	})
+	return a
+}
+
+// IfElse adds the positive attributes if the condition is true, or the negative attributes if the condition returns false.
+func (a Attributes) IfElse(condition func(*http.Request) bool, positive, negative Attributes) Attributes {
+	a = append(a, TConditions{
+		{
+			Condition: condition,
+			Content:   positive,
+		},
+		{
+			Content: negative,
+		},
 	})
 	return a
 }
@@ -96,31 +113,31 @@ type Tag struct {
 func (t Tag) Init(f *Framework, w io.Writer) error {
 	_, err := w.Write([]byte(`<` + t.Name))
 	if err != nil {
-		return AddPathToError(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
+		return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
 	}
 	if !t.Attrs.IsEmpty() {
 		_, err = w.Write([]byte(` `))
 		if err != nil {
-			return AddPathToError(fmt.Errorf(`failed to write start tag attribute separator: %w`, err), t.Name)
+			return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag attribute separator: %w`, err), t.Name)
 		}
 		err = t.Attrs.Init(f, w)
 		if err != nil {
-			return AddPathToError(fmt.Errorf(`failed to write start tag attributes: %w`, err), t.Name)
+			return internal.ErrPrependPath(err, t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`>`))
 	if err != nil {
-		return AddPathToError(fmt.Errorf(`failed to write start tag end: %w`, err), t.Name)
+		return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag end: %w`, err), t.Name)
 	}
 	if t.Content != nil {
 		err = t.Content.Init(f, w)
 		if err != nil {
-			return AddPathToError(err, t.Name)
+			return internal.ErrPrependPath(err, t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`</` + t.Name + `>`))
 	if err != nil {
-		return AddPathToError(fmt.Errorf(`failed to write "%s" end tag: %w`, t.Name, err), t.Name)
+		return internal.ErrPrependPath(fmt.Errorf(`failed to write "%s" end tag: %w`, t.Name, err), t.Name)
 	}
 	return nil
 }
@@ -136,13 +153,13 @@ type Document struct {
 }
 
 func (d Document) Init(f *Framework, w io.Writer) error {
-	return AddPathToError(Fragment{
+	return internal.ErrPrependPath(Fragment{
 		Raw("<!DOCTYPE html>"),
 		Tag{Name: "html", Content: Fragment{
 			Tag{Name: "head", Content: d.Header},
 			Tag{Name: "body", Content: d.Body},
 		}},
-	}.Init(f, w), "document")
+	}.Init(f, w), "Document")
 }
 
 // Div is a shorthand for a "div" Tag.
@@ -166,20 +183,20 @@ func (d Div) Init(f *Framework, w io.Writer) error {
 		id = f.Generator.NewGroupID("gohtmx-id")
 	}
 	attrs := d.Attrs.
-		Value("id", id).
-		Values("class", d.Classes...).
-		Flag("hidden", d.Hidden)
+		String("id", id).
+		Slice("class", d.Classes...).
+		Bool("hidden", d.Hidden)
 
 	if len(d.UpdateWith) > 0 {
 		var err error
 		content, err = f.Mono(content)
 		if err != nil {
-			return AddPathToError(err, "Div")
+			return internal.ErrPrependPath(err, "div")
 		}
 		for _, path := range d.UpdateWith {
 			f.AtPath(path).AddOutOfBand(Tag{
 				Name:    "div",
-				Attrs:   attrs.Copy().Value("hx-swap-oob", "true").Value("hx-target", "#"+id),
+				Attrs:   attrs.Copy().String("hx-swap-oob", "true").String("hx-target", "#"+id),
 				Content: d.Content,
 			})
 		}
@@ -199,19 +216,20 @@ type Button struct {
 	Attr    Attributes
 	Hidden  bool
 
-	// TODO: HTMX attributes as first class citizens.
-
 	Content Component
+
+	Disabled bool
 }
 
 func (b Button) Init(f *Framework, w io.Writer) error {
 	return Tag{
 		Name: "button",
 		Attrs: b.Attr.
-			Value("id", b.ID).
-			Values("class", b.Classes...).
-			Value("type", "button").
-			Flag("hidden", b.Hidden),
+			String("id", b.ID).
+			Slice("class", b.Classes...).
+			String("type", "button").
+			Bool("hidden", b.Hidden).
+			Bool("disabled", b.Disabled),
 		Content: b.Content,
 	}.Init(f, w)
 }
@@ -223,20 +241,22 @@ type Input struct {
 	Attr    Attributes
 	Hidden  bool
 
-	Type  string
-	Name  string
-	Value string
+	Type     string
+	Name     string
+	Value    string
+	Disabled bool
 }
 
 func (i Input) Init(f *Framework, w io.Writer) error {
 	return Tag{
 		Name: "input",
 		Attrs: i.Attr.
-			Value("id", i.ID).
-			Values("class", i.Classes...).
-			Flag("hidden", i.Hidden).
-			Value("type", i.Type).
-			Value("name", i.Name).
-			Value("value", i.Value),
+			String("id", i.ID).
+			Slice("class", i.Classes...).
+			String("type", i.Type).
+			String("name", i.Name).
+			String("value", i.Value).
+			Bool("hidden", i.Hidden).
+			Bool("disabled", i.Disabled),
 	}.Init(f, w)
 }

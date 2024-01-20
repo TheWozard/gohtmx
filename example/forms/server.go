@@ -63,7 +63,7 @@ func main() {
 
 func Body(store Store) gohtmx.Component {
 	return gohtmx.Div{
-		Attrs: gohtmx.Attrs().Value("hx-ext", "morph"),
+		Attrs: gohtmx.Attrs().String("hx-ext", "morph"),
 		Content: gohtmx.Fragment{
 			gohtmx.Div{ID: "error"},
 			Header(),
@@ -94,6 +94,7 @@ func Header() gohtmx.Component {
 }
 
 func Search(store Store) gohtmx.Component {
+	mono := &gohtmx.MetaMono{Content: Form(store)}
 	return gohtmx.Fragment{
 		gohtmx.Form{
 			ID: "search",
@@ -129,7 +130,7 @@ func Search(store Store) gohtmx.Component {
 			UpdateForm:   true,
 			Target:       "#search-results",
 			Error:        AsCard(gohtmx.Raw("{{.error}}")),
-			Success:      Form(store),
+			Success:      mono,
 		},
 		gohtmx.Div{
 			ID: "search-results",
@@ -141,9 +142,7 @@ func Search(store Store) gohtmx.Component {
 					return ok && search != ""
 				},
 				// Interaction is disabled to prevent duplicate interactions.
-				Content: gohtmx.MetaDisableInteraction{
-					Content: Form(store),
-				},
+				Content: mono,
 			},
 		},
 	}
@@ -205,8 +204,8 @@ func Form(store Store) gohtmx.Component {
 
 func TabSelector(text, path, target string) gohtmx.Component {
 	return gohtmx.Button{
-		Attr: gohtmx.Attrs().Value("hx-get", path).Value("hx-target", target).
-			Condition(gohtmx.IsRequestAtPath(path), gohtmx.Attrs().Value("class", "active")),
+		Attr: gohtmx.Attrs().String("hx-get", path).String("hx-target", target).
+			If(gohtmx.IsRequestAtPath(path), gohtmx.Attrs().String("class", "active")),
 		Content: gohtmx.Raw(text),
 	}
 }
