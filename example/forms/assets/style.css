@@ -24,7 +24,7 @@ input {
 
 button:hover,
 input[type="submit"]:hover {
-    background-color: hsl(0, 0%, 80%);
+    background-color: hsl(0, 0%, 70%);
 }
 
 button:focus,
