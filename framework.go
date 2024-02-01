@@ -8,78 +8,43 @@ import (
 	"strings"
 
 	"github.com/TheWozard/gohtmx/core"
-	"github.com/TheWozard/gohtmx/internal"
-	"github.com/go-chi/chi/v5"
 )
 
-var (
-	ErrInteractionExists = fmt.Errorf("interaction already exists")
-	ErrNilComponent      = fmt.Errorf("component is required")
-)
-
-func NewDefaultFramework() *Framework {
-	return &Framework{
+func NewPage() *Page {
+	return &Page{
 		PathPrefix: "/",
-		Index:      map[string]Interaction{},
+		Index:      map[string]Request{},
 		Template:   template.New("content"),
 		Generator:  core.NewDefaultGenerator(),
 	}
 }
 
-// Interaction defines a single location
-type Interaction struct {
-	Core       Component
-	OutOfBand  []Component
-	Middleware []Middleware
-}
-
-func (i Interaction) Component() Component {
-	return Fragment(append(i.OutOfBand, i.Core))
-}
-
-func (i Interaction) Wrap(handler http.Handler) http.Handler {
-	for _, middleware := range i.Middleware {
-		handler = middleware(handler)
-	}
-	return handler
-}
-
-// Framework defines the process of loading interactive components of the page to be served.
-// Framework also acts as an http.Handler to serve the loaded content.
-type Framework struct {
+// Page defines a single page application.
+type Page struct {
 	// PathPrefix defines the current prefix for a component to build requests from.
 	PathPrefix string
-
-	Index map[string]Interaction
-
+	// Index collects all the interactive components of the page.
+	Index map[string]Request
 	// The template to use for rendering components.
 	Template *template.Template
-
+	// Generator provides generated content for initializing elements.
 	Generator core.Generator
 }
 
-func (f *Framework) Build() (http.Handler, error) {
-	var err error
+// Build creates a new http.Handler for the entire page.
+func (p *Page) Build() (http.Handler, error) {
+	htmx := http.NewServeMux()
 	var page http.Handler
-	if index, ok := f.Index["/"]; ok {
-		page, err = NewTemplateHandler(f, index.Component())
+	for path, request := range p.Index {
+		handler, err := request.Handler(p)
 		if err != nil {
 			return nil, err
 		}
-		page = index.Wrap(page)
-	}
-	htmx := chi.NewMux()
-	var handler http.Handler
-	for path, interaction := range f.Index {
 		if path == "/" {
-			continue
+			page = handler
+		} else {
+			htmx.Handle(path, handler)
 		}
-		handler, err = NewTemplateHandler(f, interaction.Component())
-		if err != nil {
-			return nil, err
-		}
-		handler = interaction.Wrap(handler)
-		htmx.Handle(path, handler)
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,55 +57,66 @@ func (f *Framework) Build() (http.Handler, error) {
 	}), nil
 }
 
-// -- Features --
-
-func (f *Framework) IsInteractive() bool {
-	return f.Index != nil
+// Render creates a new http.Handler for the given element. This will run validation and rendering on the element.
+func (p *Page) Render(element Element) (http.Handler, error) {
+	if element == nil {
+		return nil, fmt.Errorf("failed to create template handler: missing element")
+	}
+	err := element.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate element: %w", err)
+	}
+	data := bytes.NewBuffer(nil)
+	err = Elements{
+		Raw("{{$r := .request}}"),
+		element,
+	}.Render(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render element: %w", err)
+	}
+	name := p.Generator.NewGroupID("template")
+	p.Template, err = p.Template.New(name).Parse(data.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template: %w", err)
+	}
+	return &TemplateHandler{
+		Template: p.Template,
+		Name:     name,
+	}, nil
 }
 
-func (f *Framework) CanTemplate() bool {
-	return f.Template != nil
+// Init initializes a component and returns its created element. This handles the error without the Component from having to.
+// This is a convenience method for Components to use to initialize other components/contents.
+func (p *Page) Init(c Component) Element {
+	if p != nil && c != nil {
+		element, err := c.Init(p)
+		if err != nil {
+			// We add the error into the Element Tree. This will get picked up during the validation stage.
+			return &RawError{Err: err}
+		}
+		return element
+	}
+	return nil
 }
 
 // -- Location ---
 
-func (f *Framework) Path(segments ...string) string {
+// Path returns the full path of the page with any additional segments appended.
+func (p *Page) Path(segments ...string) string {
 	if len(segments) > 0 {
-		return strings.TrimRight(f.PathPrefix, "/") + "/" + strings.TrimLeft(strings.Join(segments, "/"), "/")
+		return strings.TrimRight(p.PathPrefix, "/") + "/" + strings.TrimLeft(strings.Join(segments, "/"), "/")
 	}
-	return f.PathPrefix
+	return p.PathPrefix
 }
 
-func (f *Framework) AtPath(segments ...string) *Framework {
-	return &Framework{
-		PathPrefix: f.Path(segments...),
-		Generator:  f.Generator,
-		Index:      f.Index,
-		Template:   f.Template,
-	}
-}
-
-func (f *Framework) WithTemplate(t *template.Template) *Framework {
-	return &Framework{
-		PathPrefix: f.PathPrefix,
-		Generator:  f.Generator,
-		Index:      f.Index,
-		Template:   t,
-	}
-}
-
-func (f *Framework) NoMux() *Framework {
-	return &Framework{
-		PathPrefix: f.PathPrefix,
-		Generator:  f.Generator,
-		Template:   f.Template,
-	}
-}
-
-func (f *Framework) Slim() *Framework {
-	return &Framework{
-		PathPrefix: f.PathPrefix,
-		Generator:  f.Generator,
+// AtPath returns a new Page with the with the segments appended to the current path.
+// Resources are shared between both new and old page, only the path is different.
+func (p *Page) AtPath(segments ...string) *Page {
+	return &Page{
+		PathPrefix: p.Path(segments...),
+		Generator:  p.Generator,
+		Index:      p.Index,
+		Template:   p.Template,
 	}
 }
 
@@ -148,73 +124,41 @@ func (f *Framework) Slim() *Framework {
 
 type Middleware func(http.Handler) http.Handler
 
-func (f *Framework) Use(middleware Middleware) {
-	if f == nil || !f.IsInteractive() || middleware == nil {
+// Use adds middleware to the request at this pages current path.
+func (p *Page) Use(middleware ...Middleware) {
+	if p == nil || middleware == nil {
 		return
 	}
-	interaction, ok := f.Index[f.Path()]
-	if !ok {
-		interaction = Interaction{}
-	}
-	interaction.Middleware = append(interaction.Middleware, middleware)
-	f.Index[f.Path()] = interaction
+	request := p.Index[p.Path()]
+	request.Middleware = append(request.Middleware, middleware...)
+	p.Index[p.Path()] = request
 }
 
-func (f *Framework) AddInteraction(component Component) error {
-	if f == nil || !f.IsInteractive() || component == nil {
-		return nil
-	}
-	interaction, ok := f.Index[f.Path()]
-	if !ok {
-		interaction = Interaction{}
-	}
-	if interaction.Core != nil {
-		return fmt.Errorf("interaction already exists at path %s: %w", f.Path(), ErrInteractionExists)
-	}
-	interaction.Core = MetaAtPath{Path: f.Path(), Content: component}
-	f.Index[f.Path()] = interaction
-	return nil
-}
-
-func (f *Framework) AddOutOfBand(component Component) {
-	if f == nil || !f.IsInteractive() || component == nil {
+// Add adds a component to the request at this pages current path. This is when a Component is initialized through Init into elements.
+func (p *Page) Add(component Component) {
+	if p == nil || component == nil {
 		return
 	}
-	interaction, ok := f.Index[f.Path()]
-	if !ok {
-		interaction = Interaction{}
-	}
-	interaction.OutOfBand = append(interaction.OutOfBand, MetaAtPath{Path: f.Path(), Content: component})
-	f.Index[f.Path()] = interaction
+	request := p.Index[p.Path()]
+	request.Elements = append(request.Elements, p.Init(component))
+	p.Index[p.Path()] = request
 }
 
-// -- Rendering --
-
-func (f *Framework) Mono(component Component) (Component, error) {
-	if component == nil {
-		return nil, nil
-	}
-	data := bytes.NewBuffer(nil)
-	err := component.Init(f, data)
-	if err != nil {
-		return nil, internal.ErrEnclosePath(err, "Mono")
-	}
-	return Raw(data.String()), nil
+// Request defines a single interactive endpoint.
+type Request struct {
+	Elements   Elements
+	Middleware []Middleware
 }
 
-func (f *Framework) Render(component Component) (string, error) {
-	if !f.CanTemplate() {
-		return "", ErrCannotTemplate
-	}
-	if component == nil {
-		return "", ErrNilComponent
-	}
-	data := bytes.NewBuffer(nil)
-	err := component.Init(f, data)
+// Handler creates a new http.Handler for the request. This will run validation and rendering on the elements.
+func (r Request) Handler(p *Page) (http.Handler, error) {
+	var handler http.Handler
+	handler, err := p.Render(r.Elements)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	name := f.Generator.NewGroupID("template")
-	f.Template, err = f.Template.New(name).Parse(data.String())
-	return name, err
+	for _, middleware := range r.Middleware {
+		handler = middleware(handler)
+	}
+	return handler, nil
 }

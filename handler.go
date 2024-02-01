@@ -7,32 +7,6 @@ import (
 	"net/http"
 )
 
-func NewTemplateHandler(f *Framework, component Component) (*TemplateHandler, error) {
-	if !f.CanTemplate() {
-		return nil, fmt.Errorf("failed to render component: %w", ErrCannotTemplate)
-	}
-	if component == nil {
-		return nil, fmt.Errorf("failed to render component: %w", ErrNilComponent)
-	}
-	data := bytes.NewBuffer(nil)
-	err := Fragment{
-		Raw("{{$r := .request}}"),
-		component,
-	}.Init(f, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to render component: %w", err)
-	}
-	name := f.Generator.NewGroupID("template")
-	f.Template, err = f.Template.New(name).Parse(data.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse template: %w", err)
-	}
-	return &TemplateHandler{
-		Template: f.Template,
-		Name:     name,
-	}, nil
-}
-
 type TemplateHandler struct {
 	Template *template.Template
 	Name     string
