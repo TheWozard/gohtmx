@@ -1,14 +1,10 @@
 package gohtmx
 
-// import (
-// 	"fmt"
-// 	"html/template"
-// 	"io"
-// 	"net/http"
-// 	"strings"
-
-// 	"github.com/TheWozard/gohtmx/internal"
-// )
+import (
+	"fmt"
+	"html/template"
+	"net/http"
+)
 
 // var ErrCannotTemplate = fmt.Errorf("templating is not enabled")
 // var ErrInvalidVariableName = fmt.Errorf("invalid variable name")
@@ -127,26 +123,24 @@ package gohtmx
 // 	return nil
 // }
 
-// // TWith defines a template block to be executed with . being set to the result of the Func.
-// type TWith struct {
-// 	Func    func(*http.Request) Data
-// 	Content Component
-// }
+// TWith defines a template block to be executed with . being set to the result of the Func.
+type TWith struct {
+	Func    func(*http.Request) any
+	Content Component
+}
 
-// func (t TWith) Init(f *Page, w io.Writer) error {
-// 	if !f.CanTemplate() {
-// 		return ErrCannotTemplate
-// 	}
-// 	if t.Func == nil {
-// 		return ErrMissingFunction
-// 	}
-// 	id := f.Generator.NewFunctionID(t.Func)
-// 	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
-// 	return internal.ErrEnclosePath(TBlock{
-// 		Action:  fmt.Sprintf(`with %s $r`, id),
-// 		Content: t.Content,
-// 	}.Init(f, w), "TWith")
-// }
+func (t TWith) Init(f *Page) (Element, error) {
+	if t.Func == nil {
+		return t.Content.Init(f)
+	}
+	id := f.Generator.NewGroupID("func")
+	f.Template = f.Template.Funcs(template.FuncMap{id: t.Func})
+	return Elements{
+		Raw(fmt.Sprintf(`{{with %s $r}}`, id)),
+		f.Init(t.Content),
+		Raw(`{{end}}`),
+	}, nil
+}
 
 // // TRange defines a template block to range over a template . variable.
 // type TRange struct {

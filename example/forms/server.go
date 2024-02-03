@@ -46,7 +46,7 @@ func main() {
 	mux.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("./example/forms/assets"))))
 	mux.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate Delay
-		time.Sleep(200 * time.Millisecond)
+		// time.Sleep(200 * time.Millisecond)
 		h.ServeHTTP(w, r)
 	})
 
@@ -62,7 +62,7 @@ func Body(store Store) gohtmx.Component {
 
 	return gohtmx.Div{
 		Content: gohtmx.Fragment{
-			(&components.Counter{}).Component(),
+			&components.Counter{Min: 0, Max: 10, Step: 2, Count: 0},
 		},
 	}
 }
