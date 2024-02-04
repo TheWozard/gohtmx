@@ -3,230 +3,244 @@ package gohtmx
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
-type Swap string
+// SwapMethod defines the method of swapping content. See https://htmx.org/docs/#swapping
+type SwapMethod string
 
-func (s Swap) Default() Swap {
-	if s == "" {
-		return SwapOuterHTML
-	}
-	return s
+// Show sets the SwapMethod to show the target at the given ScrollPosition when the content is swapped.
+func (s SwapMethod) Show(target ScrollPosition) SwapMethod {
+	return SwapMethod(string(s) + " show:" + string(target))
 }
 
-func (s Swap) Show(target string) Swap {
-	return Swap(string(s) + " show:" + target)
+// Scroll sets the SwapMethod to scroll the target to the given ScrollPosition when the content is swapped.
+func (s SwapMethod) Scroll(target ScrollPosition) SwapMethod {
+	return SwapMethod(string(s) + " scroll:" + string(target))
 }
 
-func (s Swap) Scroll(target string) Swap {
-	return Swap(string(s) + " scroll:" + target)
-}
-
-func (s Swap) FocusScroll(enabled bool) Swap {
+// FocusScroll sets the SwapMethod to scroll to the focused element when the content is swapped.
+func (s SwapMethod) FocusScroll(enabled bool) SwapMethod {
 	if enabled {
-		return Swap(string(s) + " focus-scroll:true")
+		return SwapMethod(string(s) + " focus-scroll:true")
 	}
-	return Swap(string(s) + " focus-scroll:false")
+	return SwapMethod(string(s) + " focus-scroll:false")
 }
 
 const (
-	SwapInnerHTML   Swap = "innerHTML"
-	SwapOuterHTML   Swap = "outerHTML"
-	SwapAfterBegin  Swap = "afterbegin"
-	SwapBeforeBegin Swap = "beforebegin"
-	SwapAfterEnd    Swap = "afterend"
-	SwapBeforeEnd   Swap = "beforeend"
-	SwapDelete      Swap = "delete"
-	SwapNone        Swap = "none"
+	SwapInnerHTML   SwapMethod = "innerHTML"
+	SwapOuterHTML   SwapMethod = "outerHTML"
+	SwapAfterBegin  SwapMethod = "afterbegin"
+	SwapBeforeBegin SwapMethod = "beforebegin"
+	SwapAfterEnd    SwapMethod = "afterend"
+	SwapBeforeEnd   SwapMethod = "beforeend"
+	SwapDelete      SwapMethod = "delete"
+	SwapNone        SwapMethod = "none"
 )
 
-type Trigger string
+// ScrollPosition is the location to Scroll or Show in the SwapMethod.
+type ScrollPosition string
 
-func (t Trigger) Changed(delay time.Duration) Trigger {
-	return Trigger(string(t) + " changed")
+const (
+	ScrollTop    ScrollPosition = "top"
+	ScrollBottom ScrollPosition = "bottom"
+)
+
+// TriggerMethod defines the method of triggering an Interaction. See https://htmx.org/docs/#triggers
+type TriggerMethod string
+
+// Changed sets the TriggerMethod to trigger when the value of the target changes.
+func (t TriggerMethod) Changed(delay time.Duration) TriggerMethod {
+	return TriggerMethod(string(t) + " changed")
 }
 
-func (t Trigger) Delay(delay time.Duration) Trigger {
-	return Trigger(string(t) + " delay:" + delay.String())
+// Delay sets the TriggerMethod to trigger after the given delay. If a new event is triggered before the delay, the timer is reset.
+func (t TriggerMethod) Delay(delay time.Duration) TriggerMethod {
+	return TriggerMethod(string(t) + " delay:" + delay.String())
 }
 
-func (t Trigger) Throttle(delay time.Duration) Trigger {
-	return Trigger(string(t) + " throttle:" + delay.String())
+// Throttle sets the TriggerMethod to trigger at most once every delay. If a new event is triggered before the delay, the event is ignored.
+func (t TriggerMethod) Throttle(delay time.Duration) TriggerMethod {
+	return TriggerMethod(string(t) + " throttle:" + delay.String())
 }
 
 const (
-	TriggerLoad     Trigger = "load"
-	TriggerRevealed Trigger = "revealed"
-	TriggerClick    Trigger = "click"
-	TriggerChange   Trigger = "change"
-	TriggerSubmit   Trigger = "submit"
+	TriggerLoad     TriggerMethod = "load"
+	TriggerRevealed TriggerMethod = "revealed"
+	TriggerClick    TriggerMethod = "click"
+	TriggerChange   TriggerMethod = "change"
+	TriggerSubmit   TriggerMethod = "submit"
 )
 
 // -- Interaction --
 
+// NewInteraction creates a new Interaction with the given name.
 func NewInteraction(name string) *Interaction {
 	return &Interaction{Name: name}
 }
 
+// Interaction defines a set of Swaps, Triggers, and Updates. Swaps define changes to the content of the page.
+// Triggers define what can cause the Interaction to occur. Updates define changes to the backing data.
+// All interactions are named to mount the interaction to the current page path.
 type Interaction struct {
 	Name string
 
-	Handlers []func(*http.Request)
-	Actions  []*Action
-	Triggers []*Reference
+	// TODO: Handler? is there value to multiple
+	handlers []func(*http.Request)
+	swaps    []*Swap
+	triggers []*Trigger
 }
 
-// -- References --
-
-func (m *Interaction) Trigger(c Component) Component {
-	if m == nil || c == nil {
-		return c
+// Trigger creates a new Trigger for the Interaction.
+func (i *Interaction) Trigger() *Trigger {
+	if i == nil {
+		return nil
 	}
-	trigger := &Reference{Target: c}
-	m.Triggers = append(m.Triggers, trigger)
+	trigger := NewTrigger()
+	i.AddTrigger(trigger)
 	return trigger
 }
 
-func (m *Interaction) Action() *Action {
-	if m == nil {
+// AddTrigger adds a Trigger to the Interaction.
+func (i *Interaction) AddTrigger(t *Trigger) *Interaction {
+	if i == nil || t == nil {
+		return i
+	}
+	i.triggers = append(i.triggers, t)
+	return i
+}
+
+// Swap creates a new Swap for the Interaction.
+func (i *Interaction) Swap() *Swap {
+	if i == nil {
 		return nil
 	}
-	action := NewAction()
-	m.AddAction(action)
+	action := NewSwap()
+	i.AddSwap(action)
 	return action
 }
 
-func (m *Interaction) AddAction(a *Action) *Interaction {
-	if m == nil || a == nil {
-		return m
+// AddSwap adds a Swap to the Interaction.
+func (i *Interaction) AddSwap(a *Swap) *Interaction {
+	if i == nil || a == nil {
+		return i
 	}
-	if len(m.Actions) > 0 {
-		a.OOB()
+	if len(i.swaps) > 0 {
+		a.OutOfBounds()
 	}
-	m.Actions = append([]*Action{a.AddValidation(m)}, m.Actions...)
-	return m
+	i.swaps = append([]*Swap{a.addValidation(i.validate)}, i.swaps...)
+	return i
 }
 
-func (m *Interaction) Handle(f func(*http.Request)) *Interaction {
-	if m == nil {
+// Handle adds a handler to the Interaction.
+func (i *Interaction) Handle(f func(*http.Request)) *Interaction {
+	if i == nil {
 		return nil
 	}
-	m.Handlers = append(m.Handlers, f)
-	return m
+	i.handlers = append(i.handlers, f)
+	return i
 }
 
-func (m *Interaction) Validate(r *Reference) error {
-	if m == nil || len(m.Actions) == 0 {
+func (i *Interaction) validate(r *Reference) error {
+	if i == nil {
 		return nil
 	}
-	base := m.Actions[len(m.Actions)-1]
-	if base.oob {
-		// If the base action is oob, there is no non oob actions. So we cant directly swap anything.
-		for _, trigger := range m.Triggers {
-			a, err := trigger.FindAttrs()
-			if err != nil {
-				return err
-			}
-			a.String("hx-post", r.Page.Path())
-			a.String("hx-swap", string(SwapNone))
-		}
-		return nil
+	var swap *Swap
+	page := r.Page
+	if len(i.swaps) > 0 {
+		last := i.swaps[len(i.swaps)-1]
+		page = last.target.Page
+		swap = last
 	}
-	// We have a valid base action.
-	id, err := base.target.ID()
-	if err != nil {
-		return err
-	}
-	page := base.target.Page.AtPath(m.Name)
-	contents := make(Fragment, len(m.Actions))
-	for i, action := range m.Actions {
-		contents[i] = action
+	page = page.AtPath(i.Name)
+	contents := make(Fragment, len(i.swaps))
+	for j, action := range i.swaps {
+		contents[j] = action.target
 	}
 	page.Add(contents)
-	page.Use(m.Middleware)
-	for _, trigger := range m.Triggers {
-		a, err := trigger.FindAttrs()
+	page.Use(i.middleware)
+	for _, trigger := range i.triggers {
+		err := trigger.Update(page, swap)
 		if err != nil {
 			return err
 		}
-		a.String("hx-target", "#"+id)
-		a.String("hx-post", page.Path())
-		a.String("hx-swap", string(base.swap))
 	}
 	return nil
 }
 
-func (m *Interaction) Middleware(next http.Handler) http.Handler {
-	if len(m.Handlers) == 0 {
+func (i *Interaction) middleware(next http.Handler) http.Handler {
+	if len(i.handlers) == 0 {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, h := range m.Handlers {
+		for _, h := range i.handlers {
 			h(r)
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// -- Action --
+// -- Swap --
 
-// Creates a new Action. It is generally better to use the Interaction.Action method.
-func NewAction() *Action {
-	return &Action{}
+// Creates a new Swap. This defines the application of new content to a target. This can occur either in or out of bounds.
+func NewSwap() *Swap {
+	return &Swap{}
 }
 
-// Action defines the application of new content to a target. This can occur either in or out of bounds.
-// If out of bounds, the contents will be updated to include the needed Attributes.
-type Action struct {
+// Swap defines the application of new content to a target. This can occur either in or out of bounds.
+// If out of bounds, the contents will be updated to include the id of the contents.
+type Swap struct {
 	target      *Reference
 	contents    *Reference
 	validations []ReferenceValidator
-	swap        Swap
-	oob         bool
+	method      SwapMethod
+	outOfBand   bool
 }
 
-// Swap sets the swap method for the Action.
-func (a *Action) Swap(s Swap) *Action {
-	if a == nil {
+// Method sets the swap method to replace the target with.
+func (s *Swap) Method(m SwapMethod) *Swap {
+	if s == nil {
 		return nil
 	}
-	a.swap = s
-	return a
+	s.method = m
+	return s
 }
 
-// OOB sets the Action to be out of bounds.
-func (a *Action) OOB() *Action {
-	if a == nil {
+// OutOfBounds sets the Swap to be out of bounds.
+func (s *Swap) OutOfBounds() *Swap {
+	if s == nil {
 		return nil
 	}
-	a.oob = true
-	return a
+	s.outOfBand = true
+	if s.method == "" {
+		s.method = SwapOuterHTML
+	}
+	return s
 }
 
-// Target sets the target of the Action. This is used to identify using the ID of the target.
-// If the target is missing an ID, a new one is generated for the target.
-// Target can only be set once.
-func (a *Action) Target(c Component) Component {
-	if a == nil || c == nil {
-		return c
+// Target sets the target of the Swap. The ID is used for targeting the element to swap.
+// If the target is missing an ID, a new one is generated for the target. Target can only be set once.
+func (s *Swap) Target(c Component) Component {
+	if s == nil || c == nil {
+		return nil
 	}
-	if a.target != nil {
+	if s.target != nil {
 		return RawError{Err: fmt.Errorf("target already set")}
 	}
-	a.target = &Reference{
+	s.target = &Reference{
 		Target: c,
-		// All action is based on the target being a part of the tree.
-		Validation: a,
+		// All validation is based on the target being a part of the tree.
+		// If the target is not a part of the tree, then the swap will never be validated.
+		Validation: s.validate,
 	}
-	return a.target
+	return s.target
 }
 
-// Content sets the content of the Action. This is the content that will be swapped with the target.
-// Content can only be set once.
-func (a *Action) Content(c Component) Component {
+// Content sets the content of the Swap. Content can only be set once.
+func (a *Swap) Content(c Component) Component {
 	if a == nil || c == nil {
-		return c
+		return nil
 	}
 	if a.contents != nil {
 		return RawError{Err: fmt.Errorf("content already set")}
@@ -237,68 +251,65 @@ func (a *Action) Content(c Component) Component {
 	return a.contents
 }
 
-// Shorthand for setting the content and target of the Action to the same Component. Set the swap to OuterHTML.
-func (a *Action) Update(c Component) Component {
-	a.Swap(SwapOuterHTML)
-	return a.Content(a.Target(c))
+// Shorthand for setting the content and target of the Swap to the same Component. Also sets the swap to OuterHTML.
+func (s *Swap) Update(c Component) Component {
+	s.Method(SwapOuterHTML)
+	return s.Content(s.Target(c))
 }
 
-// AddValidation adds a validation to the Action. This is run when the Action is validated.
-func (a *Action) AddValidation(v ReferenceValidator) *Action {
-	if a == nil || v == nil {
+func (s *Swap) addValidation(v ReferenceValidator) *Swap {
+	if s == nil || v == nil {
 		return nil
 	}
-	a.validations = append(a.validations, v)
-	return a
+	s.validations = append(s.validations, v)
+	return s
 }
 
-// Validate validates the Action. This includes setting the needed Attributes for out of bounds Actions.
-func (a *Action) Validate(r *Reference) error {
-	if a == nil {
+func (s *Swap) validate(r *Reference) error {
+	if s == nil {
 		return nil
 	}
-	if a.contents == nil {
+	if s.contents == nil {
 		return fmt.Errorf("content not set")
 	}
-	if a.target == nil {
+	if s.target == nil {
 		return fmt.Errorf("target not set")
 	}
 
 	// Run all linked validations.
-	for _, v := range a.validations {
-		err := v.Validate(r)
+	for _, v := range s.validations {
+		err := v(r)
 		if err != nil {
 			return err
 		}
 	}
 
-	// If this action is being validated then the target is expected to have been been initialized.
+	// If this swap is being validated then the target is expected to have been been initialized.
 	// We will initialize the content relative to the target if it isn't mounted anywhere else.
 	// This is a bit awkward to initialize during the validation stage, but is nessisary to ensure
 	// the content is not mounted anywhere else in the tree.
-	if a.contents.Initialized == nil {
-		if a.target.Page == nil {
+	if s.contents.Initialized == nil {
+		if s.target.Page == nil {
 			return fmt.Errorf("target was never initialized")
 		}
-		_, err := a.contents.Init(a.target.Page)
+		_, err := s.contents.Init(s.target.Page)
 		if err != nil {
 			return err
 		}
 	}
 
-	if !a.oob {
+	if !s.outOfBand {
 		return nil
 	}
 
-	// Actually set the needed Attributes for out of bounds Actions.
-	ca, err := a.contents.FindAttrs()
+	// Actually set the needed Attributes for out of bounds Swap.
+	ca, err := s.contents.FindAttrs()
 	if err != nil {
 		return err
 	}
-	a.swap = a.swap.Default()
-	ca.String("hx-swap-oob", string(a.swap))
-	if a.swap == SwapOuterHTML {
-		tid, err := a.target.ID()
+	ca.String("hx-swap-oob", string(s.method))
+	if s.method == SwapOuterHTML {
+		tid, err := s.target.ID()
 		if err != nil {
 			return err
 		}
@@ -307,16 +318,89 @@ func (a *Action) Validate(r *Reference) error {
 	return nil
 }
 
-// Should an Action be able to be used as a Component? Or should an Interaction directly reference the Contents.
-func (a *Action) Init(p *Page) (Element, error) {
-	if a == nil {
+func (s *Swap) triggerAttrs(a *Attributes) error {
+	if s == nil {
+		a.String("hx-swap", string(SwapNone))
+	} else {
+		id, err := s.target.ID()
+		if err != nil {
+			return err
+		}
+		a.String("hx-swap", string(s.method))
+		a.String("hx-target", "#"+id)
+	}
+	return nil
+}
+
+// -- Trigger --
+
+// NewTrigger creates a new Trigger.
+func NewTrigger() *Trigger {
+	return &Trigger{Values: url.Values{}}
+}
+
+// Trigger defines something that can cause an Interaction to occur. Each Trigger can contain a set of values to be sent with the request.
+type Trigger struct {
+	target *Reference
+	method TriggerMethod
+	Values url.Values
+}
+
+func (t *Trigger) Target(c Component) Component {
+	if t == nil || c == nil {
+		return nil
+	}
+	if t.target != nil {
+		return RawError{Err: fmt.Errorf("target already set")}
+	}
+	t.target = &Reference{
+		Target: c,
+	}
+	return t.target
+}
+
+func (t *Trigger) Method(m TriggerMethod) *Trigger {
+	if t == nil {
+		return nil
+	}
+	t.method = m
+	return t
+}
+
+func (t *Trigger) Set(key, value string) *Trigger {
+	if t == nil {
+		return nil
+	}
+	if t.Values == nil {
+		t.Values = url.Values{}
+	}
+	t.Values.Set(key, value)
+	return t
+}
+
+func (t *Trigger) Update(p *Page, swap *Swap) error {
+	a, err := t.target.FindAttrs()
+	if err != nil {
+		return err
+	}
+	a.String("hx-post", t.Path(p))
+	a.String("hx-trigger", string(t.method))
+	return swap.triggerAttrs(a)
+}
+
+func (t *Trigger) Path(p *Page) string {
+	if t.Values != nil && len(t.Values) > 0 {
+		return p.Path() + "?" + t.Values.Encode()
+	}
+	return p.Path()
+}
+
+func (t *Trigger) Init(p *Page) (Element, error) {
+	if t == nil {
 		return nil, nil
 	}
-	if a.contents == nil {
-		return nil, fmt.Errorf("content not set")
-	}
-	if a.target == nil {
+	if t.target == nil {
 		return nil, fmt.Errorf("target not set")
 	}
-	return a.contents.Init(p)
+	return t.target.Init(p)
 }

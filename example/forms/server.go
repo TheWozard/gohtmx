@@ -29,7 +29,6 @@ func main() {
 				gohtmx.Raw(`<title>Form Inputs</title>`),
 				gohtmx.Raw(`<link rel="stylesheet" href="/assets/style.css">`),
 				gohtmx.Raw(`<script src="https://unpkg.com/htmx.org@1.9.6/dist/htmx.min.js"></script>`),
-				gohtmx.Raw(`<script src="https://unpkg.com/idiomorph/dist/idiomorph-ext.min.js"></script>`),
 				gohtmx.Raw(`<script defer src="/assets/script.js"></script>`),
 			},
 			Body: Body(store),

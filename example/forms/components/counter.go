@@ -2,6 +2,7 @@ package components
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/TheWozard/gohtmx"
 )
@@ -16,8 +17,12 @@ type Counter struct {
 
 func (c *Counter) Init(p *gohtmx.Page) (gohtmx.Element, error) {
 	increment := gohtmx.NewInteraction("increment").Handle(func(r *http.Request) {
+		step := c.Step
+		if amount := r.URL.Query().Get("amount"); amount != "" {
+			step, _ = strconv.Atoi(amount)
+		}
 		if c.Step > 0 {
-			c.Count += c.Step
+			c.Count += step
 		} else {
 			c.Count++
 		}
@@ -39,10 +44,19 @@ func (c *Counter) Init(p *gohtmx.Page) (gohtmx.Element, error) {
 	return gohtmx.Div{
 		Attrs: c.Attrs,
 		Content: gohtmx.Fragment{
-			increment.Trigger(gohtmx.Button{
+			increment.Trigger().Target(gohtmx.Button{
 				Content: gohtmx.Raw("+"),
 			}),
-			increment.Action().Update(decrement.Action().Update(gohtmx.Div{
+			increment.Trigger().Set("amount", "1").Target(gohtmx.Button{
+				Content: gohtmx.Raw("+1"),
+			}),
+			increment.Trigger().Set("amount", "2").Target(gohtmx.Button{
+				Content: gohtmx.Raw("+2"),
+			}),
+			increment.Trigger().Set("amount", "3").Target(gohtmx.Button{
+				Content: gohtmx.Raw("+3"),
+			}),
+			increment.Swap().Update(decrement.Swap().Update(gohtmx.Div{
 				Content: gohtmx.TWith{
 					Func: func(r *http.Request) any {
 						return c
@@ -50,7 +64,7 @@ func (c *Counter) Init(p *gohtmx.Page) (gohtmx.Element, error) {
 					Content: gohtmx.Raw("{{.Count}}"),
 				},
 			})),
-			decrement.Trigger(gohtmx.Button{
+			decrement.Trigger().Target(gohtmx.Button{
 				Content: gohtmx.Raw("-"),
 			}),
 		},

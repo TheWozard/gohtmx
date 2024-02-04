@@ -5,9 +5,7 @@ import (
 	"io"
 )
 
-type ReferenceValidator interface {
-	Validate(r *Reference) error
-}
+type ReferenceValidator func(r *Reference) error
 
 // Reference wraps a Component to allow for referencing during validation and rendering.
 type Reference struct {
@@ -50,7 +48,7 @@ func (m *Reference) Validate() error {
 		return fmt.Errorf(`cannot validate uninitialized Target`)
 	}
 	if m.Validation != nil {
-		err := m.Validation.Validate(m)
+		err := m.Validation(m)
 		if err != nil {
 			return err
 		}
