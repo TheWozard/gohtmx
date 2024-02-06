@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
-
-	"github.com/TheWozard/gohtmx/core"
 )
 
 func NewPage() *Page {
@@ -15,7 +14,7 @@ func NewPage() *Page {
 		PathPrefix: "/",
 		Index:      map[string]Request{},
 		Template:   template.New("content"),
-		Generator:  core.NewDefaultGenerator(),
+		Generator:  NewDefaultGenerator(),
 	}
 }
 
@@ -28,15 +27,21 @@ type Page struct {
 	// The template to use for rendering components.
 	Template *template.Template
 	// Generator provides generated content for initializing elements.
-	Generator core.Generator
+	Generator Generator
 }
 
 // Build creates a new http.Handler for the entire page.
 func (p *Page) Build() (http.Handler, error) {
+	paths := make([]string, 0, len(p.Index))
+	for path := range p.Index {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
 	htmx := http.NewServeMux()
 	var page http.Handler
-	for path, request := range p.Index {
-		handler, err := request.Handler(p)
+	for _, path := range paths {
+		handler, err := p.Index[path].Handler(p)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +79,7 @@ func (p *Page) Render(element Element) (http.Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to render element: %w", err)
 	}
-	name := p.Generator.NewGroupID("template")
+	name := p.Generator.NewID("template")
 	p.Template, err = p.Template.New(name).Parse(data.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %w", err)
@@ -85,8 +90,8 @@ func (p *Page) Render(element Element) (http.Handler, error) {
 	}, nil
 }
 
-// Init initializes a component and returns its created element. This handles the error without the Component from having to.
-// This is a convenience method for Components to use to initialize other components/contents.
+// Init initializes a component and returns its created element. This handles the error without the Component from
+// having to. This is a convenience method for Components to use to initialize other components/contents.
 func (p *Page) Init(c Component) Element {
 	if p != nil && c != nil {
 		element, err := c.Init(p)
@@ -134,7 +139,8 @@ func (p *Page) Use(middleware ...Middleware) {
 	p.Index[p.Path()] = request
 }
 
-// Add adds a component to the request at this pages current path. This is when a Component is initialized through Init into elements.
+// Add adds a component to the request at this pages current path. This is when a Component is initialized through Init
+// into elements.
 func (p *Page) Add(component Component) {
 	if p == nil || component == nil {
 		return

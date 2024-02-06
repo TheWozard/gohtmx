@@ -51,16 +51,18 @@ const (
 type TriggerMethod string
 
 // Changed sets the TriggerMethod to trigger when the value of the target changes.
-func (t TriggerMethod) Changed(delay time.Duration) TriggerMethod {
+func (t TriggerMethod) Changed() TriggerMethod {
 	return TriggerMethod(string(t) + " changed")
 }
 
-// Delay sets the TriggerMethod to trigger after the given delay. If a new event is triggered before the delay, the timer is reset.
+// Delay sets the TriggerMethod to trigger after the given delay.
+// If a new event is triggered before the delay, the timer is reset.
 func (t TriggerMethod) Delay(delay time.Duration) TriggerMethod {
 	return TriggerMethod(string(t) + " delay:" + delay.String())
 }
 
-// Throttle sets the TriggerMethod to trigger at most once every delay. If a new event is triggered before the delay, the event is ignored.
+// Throttle sets the TriggerMethod to trigger at most once every delay.
+// If a new event is triggered before the delay, the event is ignored.
 func (t TriggerMethod) Throttle(delay time.Duration) TriggerMethod {
 	return TriggerMethod(string(t) + " throttle:" + delay.String())
 }
@@ -183,7 +185,8 @@ func (i *Interaction) middleware(next http.Handler) http.Handler {
 
 // -- Swap --
 
-// Creates a new Swap. This defines the application of new content to a target. This can occur either in or out of bounds.
+// Creates a new Swap. This defines the application of new content to a target.
+// This can occur either in or out of bounds.
 func NewSwap() *Swap {
 	return &Swap{}
 }
@@ -193,7 +196,7 @@ func NewSwap() *Swap {
 type Swap struct {
 	target      *Reference
 	contents    *Reference
-	validations []ReferenceValidator
+	validations []ValidationFunc
 	method      SwapMethod
 	outOfBand   bool
 }
@@ -232,23 +235,23 @@ func (s *Swap) Target(c Component) Component {
 		Target: c,
 		// All validation is based on the target being a part of the tree.
 		// If the target is not a part of the tree, then the swap will never be validated.
-		Validation: s.validate,
+		ValidationFunc: s.validate,
 	}
 	return s.target
 }
 
 // Content sets the content of the Swap. Content can only be set once.
-func (a *Swap) Content(c Component) Component {
-	if a == nil || c == nil {
+func (s *Swap) Content(c Component) Component {
+	if s == nil || c == nil {
 		return nil
 	}
-	if a.contents != nil {
+	if s.contents != nil {
 		return RawError{Err: fmt.Errorf("content already set")}
 	}
-	a.contents = &Reference{
+	s.contents = &Reference{
 		Target: c,
 	}
-	return a.contents
+	return s.contents
 }
 
 // Shorthand for setting the content and target of the Swap to the same Component. Also sets the swap to OuterHTML.
@@ -257,7 +260,7 @@ func (s *Swap) Update(c Component) Component {
 	return s.Content(s.Target(c))
 }
 
-func (s *Swap) addValidation(v ReferenceValidator) *Swap {
+func (s *Swap) addValidation(v ValidationFunc) *Swap {
 	if s == nil || v == nil {
 		return nil
 	}
@@ -309,7 +312,8 @@ func (s *Swap) validate(r *Reference) error {
 	}
 	ca.String("hx-swap-oob", string(s.method))
 	if s.method == SwapOuterHTML {
-		tid, err := s.target.ID()
+		var tid string
+		tid, err = s.target.ID()
 		if err != nil {
 			return err
 		}
@@ -339,7 +343,8 @@ func NewTrigger() *Trigger {
 	return &Trigger{Values: url.Values{}}
 }
 
-// Trigger defines something that can cause an Interaction to occur. Each Trigger can contain a set of values to be sent with the request.
+// Trigger defines something that can cause an Interaction to occur.
+// Each Trigger can contain a set of values to be sent with the request.
 type Trigger struct {
 	target *Reference
 	method TriggerMethod
@@ -397,7 +402,7 @@ func (t *Trigger) Path(p *Page) string {
 
 func (t *Trigger) Init(p *Page) (Element, error) {
 	if t == nil {
-		return nil, nil
+		return Element(nil), nil
 	}
 	if t.target == nil {
 		return nil, fmt.Errorf("target not set")

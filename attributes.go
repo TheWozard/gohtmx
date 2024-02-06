@@ -1,11 +1,8 @@
 package gohtmx
 
 import (
-	"fmt"
 	"io"
 	"sort"
-
-	"github.com/TheWozard/gohtmx/internal"
 )
 
 // Attrs creates a new Attributes. This should be used over creating them manually.
@@ -39,8 +36,8 @@ func (a *Attributes) Ensure() *Attributes {
 	return a
 }
 
-// Render writes the attributes to the io.Writer.
-func (a *Attributes) Render(w io.Writer) error {
+// Write writes the attributes to the passed io.Writer.
+func (a *Attributes) Write(w io.Writer) error {
 	if a.IsEmpty() {
 		return nil
 	}
@@ -53,43 +50,31 @@ func (a *Attributes) Render(w io.Writer) error {
 	sort.Strings(keys)
 
 	var err error
+	write := func(s string) {
+		_, e := w.Write([]byte(s))
+		if err == nil && e != nil {
+			err = e
+		}
+	}
 	for i, key := range keys {
 		if i > 0 {
-			_, err = w.Write([]byte(" "))
-			if err != nil {
-				return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute separator: %w", err), "Attributes")
-			}
+			write(" ")
 		}
-		_, err = w.Write([]byte(key))
-		if err != nil {
-			return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute key: %w", err), "Attributes")
-		}
+		write(key)
 		data, ok := a.Values[key]
 		if !ok || data == nil {
 			continue
 		}
-		_, err = w.Write([]byte(`="`))
-		if err != nil {
-			return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute value start: %w", err), "Attributes")
-		}
+		write(`="`)
 		for i, element := range data {
 			if i > 0 {
-				_, err = w.Write([]byte(" "))
-				if err != nil {
-					return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute value separator: %w", err), "Attributes")
-				}
+				write(" ")
 			}
-			_, err = w.Write([]byte(element))
-			if err != nil {
-				return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute value: %w", err), "Attributes")
-			}
+			write(element)
 		}
-		_, err = w.Write([]byte(`"`))
-		if err != nil {
-			return internal.ErrEnclosePath(fmt.Errorf("failed to write attribute value end: %w", err), "Attributes")
-		}
+		write(`"`)
 	}
-	return nil
+	return err
 }
 
 // Copy returns a shallow copy of the attributes.

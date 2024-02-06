@@ -1,25 +1,18 @@
-package internal
+package gohtmx
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // ErrPrependPath either adds the path to an existing PathError or creates a new one.
 func ErrPrependPath(err error, path ...string) error {
 	if err == nil {
 		return nil
 	}
-	if pe, ok := err.(PathError); ok {
+	var pe PathError
+	if errors.As(err, &pe) {
 		return pe.Prepend(path...)
-	}
-	return PathError{Path: path, Err: err}
-}
-
-// ErrEnclosePath either adds an enclosing tag to an existing PathError or creates a new one.
-func ErrEnclosePath(err error, path ...string) error {
-	if err == nil {
-		return nil
-	}
-	if pe, ok := err.(PathError); ok {
-		return pe.Enclose().Prepend(path...)
 	}
 	return PathError{Path: path, Err: err}
 }
@@ -52,13 +45,6 @@ func (p PathError) String() string {
 func (p PathError) Prepend(path ...string) PathError {
 	return PathError{
 		Path: append(path, p.Path...),
-		Err:  p.Err,
-	}
-}
-
-func (p PathError) Enclose() PathError {
-	return PathError{
-		Path: []string{"(" + p.String() + ")"},
 		Err:  p.Err,
 	}
 }

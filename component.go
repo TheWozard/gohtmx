@@ -6,20 +6,30 @@ import "fmt"
 // Components are decomposed into an Element through the Init call.
 type Component interface {
 	// Init converts the component into an Element based on the contextual data of the Framework.
-	Init(f *Page) (Element, error)
+	Init(p *Page) (Element, error)
 }
 
 // Fragment defines a slice of Components that can be used as a single Component.
 type Fragment []Component
 
-func (fr Fragment) Init(f *Page) (Element, error) {
+func (fr Fragment) Init(p *Page) (Element, error) {
 	elements := make(Elements, len(fr))
 	for i, fragment := range fr {
 		if fragment != nil {
-			elements[i] = f.Init(fragment)
+			elements[i] = p.Init(fragment)
 		}
 	}
 	return elements, nil
+}
+
+// Scope defines a Component that modifies the current path of the Page.
+type Scope struct {
+	Path    string
+	Content Component
+}
+
+func (s Scope) Init(p *Page) (Element, error) {
+	return s.Content.Init(p.AtPath(s.Path))
 }
 
 // Document the baseline component of an HTML document.
@@ -30,12 +40,12 @@ type Document struct {
 	Body Component
 }
 
-func (d Document) Init(f *Page) (Element, error) {
+func (d Document) Init(p *Page) (Element, error) {
 	return Elements{
 		Raw("<!DOCTYPE html>"),
 		&Tag{Name: "html", Content: Elements{
-			&Tag{Name: "head", Content: f.Init(d.Header)},
-			&Tag{Name: "body", Content: f.Init(d.Body)},
+			&Tag{Name: "head", Content: p.Init(d.Header)},
+			&Tag{Name: "body", Content: p.Init(d.Body)},
 		}},
 	}, nil
 }
@@ -50,14 +60,14 @@ type Div struct {
 	Content Component
 }
 
-func (d Div) Init(f *Page) (Element, error) {
+func (d Div) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "div",
 		Attrs: d.Attrs.
 			String("id", d.ID).
 			Strings("class", d.Classes...).
 			Bool("hidden", d.Hidden),
-		Content: f.Init(d.Content),
+		Content: p.Init(d.Content),
 	}, nil
 }
 
@@ -73,7 +83,7 @@ type Button struct {
 	Disabled bool
 }
 
-func (b Button) Init(f *Page) (Element, error) {
+func (b Button) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "button",
 		Attrs: b.Attr.
@@ -82,7 +92,7 @@ func (b Button) Init(f *Page) (Element, error) {
 			String("type", "button").
 			Bool("hidden", b.Hidden).
 			Bool("disabled", b.Disabled),
-		Content: f.Init(b.Content),
+		Content: p.Init(b.Content),
 	}, nil
 }
 
@@ -99,7 +109,7 @@ type Input struct {
 	Disabled bool
 }
 
-func (i Input) Init(f *Page) (Element, error) {
+func (i Input) Init(_ *Page) (Element, error) {
 	return &Tag{
 		Name: "input",
 		Attrs: i.Attr.
@@ -123,14 +133,14 @@ type Header struct {
 	Content Component
 }
 
-func (h Header) Init(f *Page) (Element, error) {
+func (h Header) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "header",
 		Attrs: h.Attr.
 			String("id", h.ID).
 			Strings("class", h.Classes...).
 			Bool("hidden", h.Hidden),
-		Content: f.Init(h.Content),
+		Content: p.Init(h.Content),
 	}, nil
 }
 
@@ -144,14 +154,14 @@ type Span struct {
 	Content Component
 }
 
-func (s Span) Init(f *Page) (Element, error) {
+func (s Span) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "span",
 		Attrs: s.Attrs.
 			String("id", s.ID).
 			Strings("class", s.Classes...).
 			Bool("hidden", s.Hidden),
-		Content: f.Init(s.Content),
+		Content: p.Init(s.Content),
 	}, nil
 }
 
@@ -165,14 +175,14 @@ type P struct {
 	Content Component
 }
 
-func (p P) Init(f *Page) (Element, error) {
+func (p P) Init(g *Page) (Element, error) {
 	return &Tag{
 		Name: "p",
 		Attrs: p.Attrs.
 			String("id", p.ID).
 			Strings("class", p.Classes...).
 			Bool("hidden", p.Hidden),
-		Content: f.Init(p.Content),
+		Content: g.Init(p.Content),
 	}, nil
 }
 
@@ -187,7 +197,7 @@ type A struct {
 	Content Component
 }
 
-func (a A) Init(f *Page) (Element, error) {
+func (a A) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "a",
 		Attrs: a.Attrs.
@@ -195,7 +205,7 @@ func (a A) Init(f *Page) (Element, error) {
 			Strings("class", a.Classes...).
 			String("href", a.Href).
 			Bool("hidden", a.Hidden),
-		Content: f.Init(a.Content),
+		Content: p.Init(a.Content),
 	}, nil
 }
 
@@ -210,7 +220,7 @@ type Img struct {
 	Alt string
 }
 
-func (img Img) Init(f *Page) (Element, error) {
+func (img Img) Init(_ *Page) (Element, error) {
 	return &Tag{
 		Name: "img",
 		Attrs: img.Attrs.
@@ -233,14 +243,14 @@ type H struct {
 	Content Component
 }
 
-func (h H) Init(f *Page) (Element, error) {
+func (h H) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: fmt.Sprintf("h%d", h.Level),
 		Attrs: h.Attrs.
 			String("id", h.ID).
 			Strings("class", h.Classes...).
 			Bool("hidden", h.Hidden),
-		Content: f.Init(h.Content),
+		Content: p.Init(h.Content),
 	}, nil
 }
 
@@ -254,10 +264,10 @@ type UL struct {
 	Items []LI
 }
 
-func (ul UL) Init(f *Page) (Element, error) {
+func (ul UL) Init(p *Page) (Element, error) {
 	items := make(Elements, len(ul.Items))
 	for i, item := range ul.Items {
-		items[i] = f.Init(item)
+		items[i] = p.Init(item)
 	}
 
 	return &Tag{
@@ -280,10 +290,10 @@ type OL struct {
 	Items []LI
 }
 
-func (ol OL) Init(f *Page) (Element, error) {
+func (ol OL) Init(p *Page) (Element, error) {
 	items := make(Elements, len(ol.Items))
 	for i, item := range ol.Items {
-		items[i] = f.Init(item)
+		items[i] = p.Init(item)
 	}
 
 	return &Tag{
@@ -306,14 +316,14 @@ type LI struct {
 	Content Component
 }
 
-func (li LI) Init(f *Page) (Element, error) {
+func (li LI) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name: "li",
 		Attrs: li.Attrs.
 			String("id", li.ID).
 			Strings("class", li.Classes...).
 			Bool("hidden", li.Hidden),
-		Content: f.Init(li.Content),
+		Content: p.Init(li.Content),
 	}, nil
 }
 
@@ -324,10 +334,10 @@ type ComponentTag struct {
 	Content Component
 }
 
-func (c ComponentTag) Init(f *Page) (Element, error) {
+func (c ComponentTag) Init(p *Page) (Element, error) {
 	return &Tag{
 		Name:    c.Name,
 		Attrs:   c.Attrs,
-		Content: f.Init(c.Content),
+		Content: p.Init(c.Content),
 	}, nil
 }

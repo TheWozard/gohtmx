@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/TheWozard/gohtmx/internal"
 )
 
 // Element defines the low level abstraction of an HTML element.
@@ -45,10 +43,10 @@ func (e Elements) FindAttrs() (*Attributes, error) {
 	return nil, fmt.Errorf(`cannot find attributes in Elements, use Tag instead`)
 }
 
-// Raw defines the most simple Element that defines purely string data
+// Raw defines the most simple Element that defines purely string data.
 type Raw string
 
-func (r Raw) Init(f *Page) (Element, error) {
+func (r Raw) Init(_ *Page) (Element, error) {
 	return r, nil
 }
 
@@ -69,7 +67,7 @@ type RawError struct {
 	Err error
 }
 
-func (r RawError) Init(f *Page) (Element, error) {
+func (r RawError) Init(_ *Page) (Element, error) {
 	return r, nil
 }
 
@@ -99,31 +97,31 @@ type Tag struct {
 func (t *Tag) Render(w io.Writer) error {
 	_, err := w.Write([]byte(`<` + t.Name))
 	if err != nil {
-		return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
+		return ErrPrependPath(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
 	}
 	if !t.Attrs.IsEmpty() {
 		_, err = w.Write([]byte(` `))
 		if err != nil {
-			return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag attribute separator: %w`, err), t.Name)
+			return ErrPrependPath(fmt.Errorf(`failed to write start tag attribute separator: %w`, err), t.Name)
 		}
-		err = t.Attrs.Render(w)
+		err = t.Attrs.Write(w)
 		if err != nil {
-			return internal.ErrPrependPath(err, t.Name)
+			return ErrPrependPath(err, t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`>`))
 	if err != nil {
-		return internal.ErrPrependPath(fmt.Errorf(`failed to write start tag end: %w`, err), t.Name)
+		return ErrPrependPath(fmt.Errorf(`failed to write start tag end: %w`, err), t.Name)
 	}
 	if t.Content != nil {
 		err = t.Content.Render(w)
 		if err != nil {
-			return internal.ErrPrependPath(err, t.Name)
+			return ErrPrependPath(err, t.Name)
 		}
 	}
 	_, err = w.Write([]byte(`</` + t.Name + `>`))
 	if err != nil {
-		return internal.ErrPrependPath(fmt.Errorf(`failed to write "%s" end tag: %w`, t.Name, err), t.Name)
+		return ErrPrependPath(fmt.Errorf(`failed to write "%s" end tag: %w`, t.Name, err), t.Name)
 	}
 	return nil
 }

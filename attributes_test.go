@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/TheWozard/gohtmx"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAttributes_Get(t *testing.T) {
@@ -56,13 +56,13 @@ func TestAttributes_Get(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			value, ok := tC.attrs.Get(tC.key)
-			assert.Equal(t, tC.ok, ok)
-			assert.Equal(t, tC.expected, value)
+			require.Equal(t, tC.ok, ok)
+			require.Equal(t, tC.expected, value)
 		})
 	}
 }
 
-func TestAttributes_Render(t *testing.T) {
+func TestAttributes_Write(t *testing.T) {
 	testCases := []struct {
 		desc     string
 		attrs    *gohtmx.Attributes
@@ -98,8 +98,8 @@ func TestAttributes_Render(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			w := bytes.NewBuffer(nil)
-			assert.Nil(t, tC.attrs.Render(w))
-			assert.Equal(t, tC.expected, w.String())
+			require.NoError(t, tC.attrs.Write(w))
+			require.Equal(t, tC.expected, w.String())
 		})
 	}
 }

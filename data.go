@@ -86,7 +86,7 @@ func (d Data) SetInResponse(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Push-Url", current.String())
 }
 
-// Subset creates a new Data map with only the passed keys
+// Subset creates a new Data map with only the passed keys.
 func (d Data) Subset(keys ...string) Data {
 	result := Data{}
 	for _, key := range keys {
