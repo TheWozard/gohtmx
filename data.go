@@ -47,6 +47,7 @@ func GetAllDataFromRequest(r *http.Request) Data {
 	return data
 }
 
+// UpdateParams updates the passed values into the Query Params of the response. Handles both GET and POST requests.
 func UpdateParams(names ...string) Middleware {
 	loader := GetDataFromRequest(names...)
 	return func(h http.Handler) http.Handler {
@@ -85,7 +86,7 @@ func (d Data) SetInResponse(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Push-Url", current.String())
 }
 
-// Subset creates a new Data map with only the passed keys
+// Subset creates a new Data map with only the passed keys.
 func (d Data) Subset(keys ...string) Data {
 	result := Data{}
 	for _, key := range keys {
