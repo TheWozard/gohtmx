@@ -327,17 +327,21 @@ func (li LI) Init(p *Page) (Element, error) {
 	}, nil
 }
 
-// ComponentTag creates a html tag with the given name.
-type ComponentTag struct {
+// CTag creates a html tag with the given name.
+type CTag struct {
 	Name    string
+	ID      string
+	Classes []string
 	Attrs   *Attributes
 	Content Component
 }
 
-func (c ComponentTag) Init(p *Page) (Element, error) {
+func (c CTag) Init(p *Page) (Element, error) {
 	return &Tag{
-		Name:    c.Name,
-		Attrs:   c.Attrs,
+		Name: c.Name,
+		Attrs: c.Attrs.
+			String("id", c.ID).
+			Strings("class", c.Classes...),
 		Content: p.Init(c.Content),
 	}, nil
 }
