@@ -48,7 +48,7 @@ func (m *Reference) Render(w io.Writer) error {
 		return fmt.Errorf(`cannot render uninitialized Target`)
 	}
 	var err error
-	if m.RenderFunc == nil {
+	if m.RenderFunc != nil {
 		w, err = m.RenderFunc(m, w)
 		if err != nil {
 			return err
