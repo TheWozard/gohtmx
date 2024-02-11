@@ -163,7 +163,10 @@ func (i *Interaction) update() error {
 		return nil
 	}
 	for _, swap := range i.swaps {
-		swap.update(i.page)
+		err := swap.update(i.page)
+		if err != nil {
+			return err
+		}
 	}
 	var swap *Swap
 	if len(i.swaps) > 0 {
@@ -188,13 +191,13 @@ func (i *Interaction) update() error {
 // -- Swap --
 
 // Creates a new Swap. This defines the application of new content to a target.
-// This can occur either in or out of bounds.
+// This can occur either in or out of band.
 func NewSwap() *Swap {
 	return &Swap{}
 }
 
-// Swap defines the application of new content to a target. This can occur either in or out of bounds.
-// If out of bounds, the contents will be updated to include the id of the contents.
+// Swap defines the application of new content to a target. This can occur either in or out of band.
+// If out of band, the contents will be updated to include the id of the contents.
 type Swap struct {
 	target    *Reference
 	contents  *Reference
@@ -211,7 +214,7 @@ func (s *Swap) Method(m SwapMethod) *Swap {
 	return s
 }
 
-// OutOfBand sets the Swap to be out of bounds.
+// OutOfBand sets the Swap to be out of band.
 func (s *Swap) OutOfBand() *Swap {
 	if s == nil {
 		return nil
@@ -278,7 +281,7 @@ func (s *Swap) update(p *Page) error {
 		if page == nil {
 			page = p
 		}
-		_, err := s.contents.Init(s.target.Page)
+		_, err := s.contents.Init(page)
 		if err != nil {
 			return err
 		}
