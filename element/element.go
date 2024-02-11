@@ -89,7 +89,7 @@ type Tag struct {
 	// Name of this tag.
 	Name string
 	// Attr defines the list of Attributes for this tag.
-	Attrs *attributes.Attributes
+	Attributes *attributes.Attributes
 	// Content defines the contents this wraps.
 	Content Element
 }
@@ -99,12 +99,12 @@ func (t *Tag) Render(w io.Writer) error {
 	if err != nil {
 		return ErrPrependPath(fmt.Errorf(`failed to write start tag start: %w`, err), t.Name)
 	}
-	if !t.Attrs.IsEmpty() {
+	if !t.Attributes.IsEmpty() {
 		_, err = w.Write([]byte(` `))
 		if err != nil {
 			return ErrPrependPath(fmt.Errorf(`failed to write start tag attribute separator: %w`, err), t.Name)
 		}
-		err = t.Attrs.Write(w)
+		err = t.Attributes.Write(w)
 		if err != nil {
 			return ErrPrependPath(err, t.Name)
 		}

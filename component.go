@@ -53,7 +53,7 @@ type Tag struct {
 func (c Tag) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: c.Name,
-		Attrs: c.Attrs.
+		Attributes: c.Attrs.
 			String("id", c.ID).
 			Strings("class", c.Classes...),
 		Content: p.Init(c.Content),
@@ -91,7 +91,7 @@ type Div struct {
 func (d Div) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "div",
-		Attrs: d.Attrs.
+		Attributes: d.Attrs.
 			String("id", d.ID).
 			Strings("class", d.Classes...).
 			Bool("hidden", d.Hidden),
@@ -114,7 +114,7 @@ type Button struct {
 func (b Button) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "button",
-		Attrs: b.Attr.
+		Attributes: b.Attr.
 			String("id", b.ID).
 			Strings("class", b.Classes...).
 			String("type", "button").
@@ -140,7 +140,7 @@ type Input struct {
 func (i Input) Init(_ *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "input",
-		Attrs: i.Attr.
+		Attributes: i.Attr.
 			String("id", i.ID).
 			Strings("class", i.Classes...).
 			String("type", i.Type).
@@ -164,7 +164,7 @@ type Header struct {
 func (h Header) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "header",
-		Attrs: h.Attr.
+		Attributes: h.Attr.
 			String("id", h.ID).
 			Strings("class", h.Classes...).
 			Bool("hidden", h.Hidden),
@@ -185,7 +185,7 @@ type Span struct {
 func (s Span) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "span",
-		Attrs: s.Attrs.
+		Attributes: s.Attrs.
 			String("id", s.ID).
 			Strings("class", s.Classes...).
 			Bool("hidden", s.Hidden),
@@ -206,7 +206,7 @@ type P struct {
 func (p P) Init(g *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "p",
-		Attrs: p.Attrs.
+		Attributes: p.Attrs.
 			String("id", p.ID).
 			Strings("class", p.Classes...).
 			Bool("hidden", p.Hidden),
@@ -228,7 +228,7 @@ type A struct {
 func (a A) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "a",
-		Attrs: a.Attrs.
+		Attributes: a.Attrs.
 			String("id", a.ID).
 			Strings("class", a.Classes...).
 			String("href", a.Href).
@@ -251,7 +251,7 @@ type Img struct {
 func (img Img) Init(_ *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "img",
-		Attrs: img.Attrs.
+		Attributes: img.Attrs.
 			String("id", img.ID).
 			Strings("class", img.Classes...).
 			String("src", img.Src).
@@ -274,7 +274,7 @@ type H struct {
 func (h H) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: fmt.Sprintf("h%d", h.Level),
-		Attrs: h.Attrs.
+		Attributes: h.Attrs.
 			String("id", h.ID).
 			Strings("class", h.Classes...).
 			Bool("hidden", h.Hidden),
@@ -300,7 +300,7 @@ func (ul UL) Init(p *Page) (element.Element, error) {
 
 	return &element.Tag{
 		Name: "ul",
-		Attrs: ul.Attrs.
+		Attributes: ul.Attrs.
 			String("id", ul.ID).
 			Strings("class", ul.Classes...).
 			Bool("hidden", ul.Hidden),
@@ -326,7 +326,7 @@ func (ol OL) Init(p *Page) (element.Element, error) {
 
 	return &element.Tag{
 		Name: "ol",
-		Attrs: ol.Attrs.
+		Attributes: ol.Attrs.
 			String("id", ol.ID).
 			Strings("class", ol.Classes...).
 			Bool("hidden", ol.Hidden),
@@ -347,7 +347,7 @@ type LI struct {
 func (li LI) Init(p *Page) (element.Element, error) {
 	return &element.Tag{
 		Name: "li",
-		Attrs: li.Attrs.
+		Attributes: li.Attrs.
 			String("id", li.ID).
 			Strings("class", li.Classes...).
 			Bool("hidden", li.Hidden),

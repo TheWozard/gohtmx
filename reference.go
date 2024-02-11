@@ -90,5 +90,5 @@ func (m *Reference) FindAttrs() (*attributes.Attributes, error) {
 	if len(tags) > 1 {
 		return nil, fmt.Errorf(`failed to get attributes, multiple tags in initialized Reference`)
 	}
-	return tags[0].Attrs, nil
+	return tags[0].Attributes, nil
 }
