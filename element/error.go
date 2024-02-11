@@ -1,4 +1,4 @@
-package gohtmx
+package element
 
 import (
 	"errors"

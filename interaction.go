@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/TheWozard/gohtmx/attributes"
+	"github.com/TheWozard/gohtmx/element"
 )
 
 // SwapMethod defines the method of swapping content. See https://htmx.org/docs/#swapping
@@ -85,13 +88,22 @@ func NewInteraction(name string) *Interaction {
 // Interaction defines a set of Swaps, Triggers, and Updates. Swaps define changes to the content of the page.
 // Triggers define what can cause the Interaction to occur. Updates define changes to the backing data.
 // All interactions are named to mount the interaction to the current page path.
+// The interaction itself does need to be included in the page as a component.
 type Interaction struct {
 	Name string
 
-	// TODO: Handler? is there value to multiple
-	handlers []func(*http.Request)
+	handler  func(*http.Request)
 	swaps    []*Swap
 	triggers []*Trigger
+	page     *Page
+}
+
+func (i *Interaction) Init(p *Page) (element.Element, error) {
+	if i == nil {
+		return nil, nil
+	}
+	i.page = p
+	return element.OnValidate(i.update), nil
 }
 
 // Trigger creates a new Trigger for the Interaction.
@@ -128,10 +140,12 @@ func (i *Interaction) AddSwap(a *Swap) *Interaction {
 	if i == nil || a == nil {
 		return i
 	}
+	// TODO: instead of just forcing the swap to be out of band, we should check if we can target this one.
 	if len(i.swaps) > 0 {
-		a.OutOfBounds()
+		a.OutOfBand()
 	}
-	i.swaps = append([]*Swap{a.addValidation(i.validate)}, i.swaps...)
+	// Prepend so the last swap is the only one with the potential to be in band.
+	i.swaps = append([]*Swap{a}, i.swaps...)
 	return i
 }
 
@@ -140,47 +154,35 @@ func (i *Interaction) Handle(f func(*http.Request)) *Interaction {
 	if i == nil {
 		return nil
 	}
-	i.handlers = append(i.handlers, f)
+	i.handler = f
 	return i
 }
 
-func (i *Interaction) validate(r *Reference) error {
+func (i *Interaction) update() error {
 	if i == nil {
 		return nil
 	}
-	var swap *Swap
-	page := r.Page
-	if len(i.swaps) > 0 {
-		last := i.swaps[len(i.swaps)-1]
-		page = last.target.Page
-		swap = last
+	for _, swap := range i.swaps {
+		swap.update(i.page)
 	}
-	page = page.AtPath(i.Name)
+	var swap *Swap
+	if len(i.swaps) > 0 {
+		swap = i.swaps[len(i.swaps)-1]
+	}
+	page := i.page.AtPath(i.Name)
 	contents := make(Fragment, len(i.swaps))
-	for j, action := range i.swaps {
-		contents[j] = action.target
+	for j, s := range i.swaps {
+		contents[j] = s.contents
 	}
 	page.Add(contents)
-	page.Use(i.middleware)
+	page.Handle(i.handler)
 	for _, trigger := range i.triggers {
-		err := trigger.Update(page, swap)
+		err := trigger.update(page, swap)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (i *Interaction) middleware(next http.Handler) http.Handler {
-	if len(i.handlers) == 0 {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, h := range i.handlers {
-			h(r)
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // -- Swap --
@@ -194,11 +196,10 @@ func NewSwap() *Swap {
 // Swap defines the application of new content to a target. This can occur either in or out of bounds.
 // If out of bounds, the contents will be updated to include the id of the contents.
 type Swap struct {
-	target      *Reference
-	contents    *Reference
-	validations []ValidationFunc
-	method      SwapMethod
-	outOfBand   bool
+	target    *Reference
+	contents  *Reference
+	method    SwapMethod
+	outOfBand bool
 }
 
 // Method sets the swap method to replace the target with.
@@ -210,8 +211,8 @@ func (s *Swap) Method(m SwapMethod) *Swap {
 	return s
 }
 
-// OutOfBounds sets the Swap to be out of bounds.
-func (s *Swap) OutOfBounds() *Swap {
+// OutOfBand sets the Swap to be out of bounds.
+func (s *Swap) OutOfBand() *Swap {
 	if s == nil {
 		return nil
 	}
@@ -233,9 +234,6 @@ func (s *Swap) Target(c Component) Component {
 	}
 	s.target = &Reference{
 		Target: c,
-		// All validation is based on the target being a part of the tree.
-		// If the target is not a part of the tree, then the swap will never be validated.
-		ValidationFunc: s.validate,
 	}
 	return s.target
 }
@@ -260,15 +258,7 @@ func (s *Swap) Update(c Component) Component {
 	return s.Content(s.Target(c))
 }
 
-func (s *Swap) addValidation(v ValidationFunc) *Swap {
-	if s == nil || v == nil {
-		return nil
-	}
-	s.validations = append(s.validations, v)
-	return s
-}
-
-func (s *Swap) validate(r *Reference) error {
+func (s *Swap) update(p *Page) error {
 	if s == nil {
 		return nil
 	}
@@ -279,21 +269,14 @@ func (s *Swap) validate(r *Reference) error {
 		return fmt.Errorf("target not set")
 	}
 
-	// Run all linked validations.
-	for _, v := range s.validations {
-		err := v(r)
-		if err != nil {
-			return err
-		}
-	}
-
 	// If this swap is being validated then the target is expected to have been been initialized.
 	// We will initialize the content relative to the target if it isn't mounted anywhere else.
 	// This is a bit awkward to initialize during the validation stage, but is nessisary to ensure
 	// the content is not mounted anywhere else in the tree.
 	if s.contents.Initialized == nil {
-		if s.target.Page == nil {
-			return fmt.Errorf("target was never initialized")
+		page := s.target.Page
+		if page == nil {
+			page = p
 		}
 		_, err := s.contents.Init(s.target.Page)
 		if err != nil {
@@ -305,7 +288,7 @@ func (s *Swap) validate(r *Reference) error {
 		return nil
 	}
 
-	// Actually set the needed Attributes for out of bounds Swap.
+	// Actually set the needed Attributes for out of band Swap.
 	ca, err := s.contents.FindAttrs()
 	if err != nil {
 		return err
@@ -322,7 +305,7 @@ func (s *Swap) validate(r *Reference) error {
 	return nil
 }
 
-func (s *Swap) triggerAttrs(a *Attributes) error {
+func (s *Swap) triggerAttrs(a *attributes.Attributes) error {
 	if s == nil {
 		a.String("hx-swap", string(SwapNone))
 	} else {
@@ -383,29 +366,19 @@ func (t *Trigger) Set(key, value string) *Trigger {
 	return t
 }
 
-func (t *Trigger) Update(p *Page, swap *Swap) error {
+func (t *Trigger) update(p *Page, swap *Swap) error {
 	a, err := t.target.FindAttrs()
 	if err != nil {
 		return err
 	}
-	a.String("hx-post", t.Path(p))
+	a.String("hx-post", t.path(p))
 	a.String("hx-trigger", string(t.method))
 	return swap.triggerAttrs(a)
 }
 
-func (t *Trigger) Path(p *Page) string {
+func (t *Trigger) path(p *Page) string {
 	if t.Values != nil && len(t.Values) > 0 {
 		return p.Path() + "?" + t.Values.Encode()
 	}
 	return p.Path()
-}
-
-func (t *Trigger) Init(p *Page) (Element, error) {
-	if t == nil {
-		return Element(nil), nil
-	}
-	if t.target == nil {
-		return nil, fmt.Errorf("target not set")
-	}
-	return t.target.Init(p)
 }

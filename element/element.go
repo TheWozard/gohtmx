@@ -1,9 +1,11 @@
-package gohtmx
+package element
 
 import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/TheWozard/gohtmx/attributes"
 )
 
 // Element defines the low level abstraction of an HTML element.
@@ -11,14 +13,14 @@ import (
 type Element interface {
 	Render(w io.Writer) error
 	Validate() error
-	FindAttrs() (*Attributes, error)
+	GetTags() []*Tag
 }
 
-// Elements defines a slice of Elements that can be used as a single Element.
-type Elements []Element
+// Fragment defines a slice of Fragment that can be used as a single Element.
+type Fragment []Element
 
-func (e Elements) Render(w io.Writer) error {
-	for _, element := range e {
+func (f Fragment) Render(w io.Writer) error {
+	for _, element := range f {
 		if element != nil {
 			err := element.Render(w)
 			if err != nil {
@@ -29,9 +31,9 @@ func (e Elements) Render(w io.Writer) error {
 	return nil
 }
 
-func (e Elements) Validate() error {
+func (f Fragment) Validate() error {
 	var err error
-	for _, element := range e {
+	for _, element := range f {
 		if element != nil {
 			err = errors.Join(err, element.Validate())
 		}
@@ -39,16 +41,18 @@ func (e Elements) Validate() error {
 	return err
 }
 
-func (e Elements) FindAttrs() (*Attributes, error) {
-	return nil, fmt.Errorf(`cannot find attributes in Elements, use Tag instead`)
+func (f Fragment) GetTags() []*Tag {
+	children := make([]*Tag, 0, len(f))
+	for _, element := range f {
+		if element != nil {
+			children = append(children, element.GetTags()...)
+		}
+	}
+	return children
 }
 
 // Raw defines the most simple Element that defines purely string data.
 type Raw string
-
-func (r Raw) Init(_ *Page) (Element, error) {
-	return r, nil
-}
 
 func (r Raw) Render(w io.Writer) error {
 	_, err := w.Write([]byte(r))
@@ -59,16 +63,12 @@ func (r Raw) Validate() error {
 	return nil
 }
 
-func (r Raw) FindAttrs() (*Attributes, error) {
-	return nil, fmt.Errorf(`cannot find attributes in Raw, use Tag instead`)
+func (r Raw) GetTags() []*Tag {
+	return []*Tag{}
 }
 
 type RawError struct {
 	Err error
-}
-
-func (r RawError) Init(_ *Page) (Element, error) {
-	return r, nil
 }
 
 func (r RawError) Render(w io.Writer) error {
@@ -80,8 +80,8 @@ func (r RawError) Validate() error {
 	return r.Err
 }
 
-func (r RawError) FindAttrs() (*Attributes, error) {
-	return nil, fmt.Errorf(`cannot find attributes in RawError, use Tag instead`)
+func (r RawError) GetTags() []*Tag {
+	return []*Tag{}
 }
 
 // Tag defines the lowest level HTML generic tag element.
@@ -89,7 +89,7 @@ type Tag struct {
 	// Name of this tag.
 	Name string
 	// Attr defines the list of Attributes for this tag.
-	Attrs *Attributes
+	Attrs *attributes.Attributes
 	// Content defines the contents this wraps.
 	Content Element
 }
@@ -136,7 +136,6 @@ func (t *Tag) Validate() error {
 	return nil
 }
 
-func (t *Tag) FindAttrs() (*Attributes, error) {
-	t.Attrs = t.Attrs.Ensure()
-	return t.Attrs, nil
+func (t *Tag) GetTags() []*Tag {
+	return []*Tag{t}
 }

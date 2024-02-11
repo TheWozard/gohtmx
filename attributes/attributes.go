@@ -1,12 +1,12 @@
-package gohtmx
+package attributes
 
 import (
 	"io"
 	"sort"
 )
 
-// Attrs creates a new Attributes. This should be used over creating them manually.
-func Attrs() *Attributes {
+// New creates a new Attributes. This should be used over creating them manually.
+func New() *Attributes {
 	return &Attributes{Values: map[string][]string{}}
 }
 
@@ -31,7 +31,7 @@ func (a *Attributes) Get(key string) (string, bool) {
 // Ensure guarantees that the Attributes are not nil.
 func (a *Attributes) Ensure() *Attributes {
 	if a == nil || a.Values == nil {
-		return Attrs()
+		return New()
 	}
 	return a
 }

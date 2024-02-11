@@ -1,17 +1,17 @@
-package gohtmx_test
+package attributes_test
 
 import (
 	"bytes"
 	"testing"
 
-	"github.com/TheWozard/gohtmx"
+	"github.com/TheWozard/gohtmx/attributes"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAttributes_Get(t *testing.T) {
 	testCases := []struct {
 		desc     string
-		attrs    *gohtmx.Attributes
+		attrs    *attributes.Attributes
 		key      string
 		expected string
 		ok       bool
@@ -25,28 +25,28 @@ func TestAttributes_Get(t *testing.T) {
 		},
 		{
 			desc:     "empty attributes",
-			attrs:    gohtmx.Attrs(),
+			attrs:    attributes.New(),
 			key:      "key",
 			expected: "",
 			ok:       false,
 		},
 		{
 			desc:     "non-existing key",
-			attrs:    gohtmx.Attrs().String("key", "value"),
+			attrs:    attributes.New().String("key", "value"),
 			key:      "nonExistingKey",
 			expected: "",
 			ok:       false,
 		},
 		{
 			desc:     "existing key with single value",
-			attrs:    gohtmx.Attrs().String("key", "value"),
+			attrs:    attributes.New().String("key", "value"),
 			key:      "key",
 			expected: "value",
 			ok:       true,
 		},
 		{
 			desc:     "existing key with multiple values",
-			attrs:    gohtmx.Attrs().Strings("key", "value1", "value2"),
+			attrs:    attributes.New().Strings("key", "value1", "value2"),
 			key:      "key",
 			expected: "",
 			ok:       false,
@@ -65,32 +65,32 @@ func TestAttributes_Get(t *testing.T) {
 func TestAttributes_Write(t *testing.T) {
 	testCases := []struct {
 		desc     string
-		attrs    *gohtmx.Attributes
+		attrs    *attributes.Attributes
 		expected string
 	}{
 		{
 			desc:     "empty attributes",
-			attrs:    gohtmx.Attrs(),
+			attrs:    attributes.New(),
 			expected: ``,
 		},
 		{
 			desc:     "string attribute",
-			attrs:    gohtmx.Attrs().String("key", "value"),
+			attrs:    attributes.New().String("key", "value"),
 			expected: `key="value"`,
 		},
 		{
 			desc:     "slice attribute",
-			attrs:    gohtmx.Attrs().Strings("key", "a", "b", "c"),
+			attrs:    attributes.New().Strings("key", "a", "b", "c"),
 			expected: `key="a b c"`,
 		},
 		{
 			desc:     "bool attribute",
-			attrs:    gohtmx.Attrs().Bool("key", true),
+			attrs:    attributes.New().Bool("key", true),
 			expected: `key`,
 		},
 		{
 			desc:     "multiple attributes",
-			attrs:    gohtmx.Attrs().String("keyA", "A").String("keyB", "B").Strings("keyC", "C", "D").Bool("keyD", true),
+			attrs:    attributes.New().String("keyA", "A").String("keyB", "B").Strings("keyC", "C", "D").Bool("keyD", true),
 			expected: `keyA="A" keyB="B" keyC="C D" keyD`,
 		},
 	}

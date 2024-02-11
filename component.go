@@ -1,35 +1,63 @@
 package gohtmx
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/TheWozard/gohtmx/attributes"
+	"github.com/TheWozard/gohtmx/element"
+)
 
 // Component defines the high level abstraction of an HTML element.
 // Components are decomposed into an Element through the Init call.
 type Component interface {
 	// Init converts the component into an Element based on the contextual data of the Framework.
-	Init(p *Page) (Element, error)
+	Init(p *Page) (element.Element, error)
 }
 
 // Fragment defines a slice of Components that can be used as a single Component.
 type Fragment []Component
 
-func (fr Fragment) Init(p *Page) (Element, error) {
-	elements := make(Elements, len(fr))
-	for i, fragment := range fr {
+func (fr Fragment) Init(p *Page) (element.Element, error) {
+	elements := make(element.Fragment, 0, len(fr))
+	for _, fragment := range fr {
 		if fragment != nil {
-			elements[i] = p.Init(fragment)
+			elements = append(elements, p.Init(fragment))
 		}
 	}
 	return elements, nil
 }
 
-// Scope defines a Component that modifies the current path of the Page.
-type Scope struct {
-	Path    string
+type Raw string
+
+func (r Raw) Init(_ *Page) (element.Element, error) {
+	return element.Raw(r), nil
+}
+
+type RawError struct {
+	Err error
+}
+
+func (r RawError) Init(_ *Page) (element.Element, error) {
+	return nil, r.Err
+}
+
+// Tag creates a html tag with the given name.
+type Tag struct {
+	Name    string
+	ID      string
+	Classes []string
+	Attrs   *attributes.Attributes
 	Content Component
 }
 
-func (s Scope) Init(p *Page) (Element, error) {
-	return s.Content.Init(p.AtPath(s.Path))
+func (c Tag) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
+		Name: c.Name,
+		Attrs: c.Attrs.
+			String("id", c.ID).
+			Strings("class", c.Classes...),
+		Content: p.Init(c.Content),
+	}, nil
 }
 
 // Document the baseline component of an HTML document.
@@ -40,12 +68,12 @@ type Document struct {
 	Body Component
 }
 
-func (d Document) Init(p *Page) (Element, error) {
-	return Elements{
-		Raw("<!DOCTYPE html>"),
-		&Tag{Name: "html", Content: Elements{
-			&Tag{Name: "head", Content: p.Init(d.Header)},
-			&Tag{Name: "body", Content: p.Init(d.Body)},
+func (d Document) Init(p *Page) (element.Element, error) {
+	return element.Fragment{
+		element.Raw("<!DOCTYPE html>"),
+		&element.Tag{Name: "html", Content: element.Fragment{
+			&element.Tag{Name: "head", Content: p.Init(d.Header)},
+			&element.Tag{Name: "body", Content: p.Init(d.Body)},
 		}},
 	}, nil
 }
@@ -54,14 +82,14 @@ func (d Document) Init(p *Page) (Element, error) {
 type Div struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Content Component
 }
 
-func (d Div) Init(p *Page) (Element, error) {
-	return &Tag{
+func (d Div) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "div",
 		Attrs: d.Attrs.
 			String("id", d.ID).
@@ -75,7 +103,7 @@ func (d Div) Init(p *Page) (Element, error) {
 type Button struct {
 	ID      string
 	Classes []string
-	Attr    *Attributes
+	Attr    *attributes.Attributes
 
 	Content Component
 
@@ -83,8 +111,8 @@ type Button struct {
 	Disabled bool
 }
 
-func (b Button) Init(p *Page) (Element, error) {
-	return &Tag{
+func (b Button) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "button",
 		Attrs: b.Attr.
 			String("id", b.ID).
@@ -100,7 +128,7 @@ func (b Button) Init(p *Page) (Element, error) {
 type Input struct {
 	ID      string
 	Classes []string
-	Attr    *Attributes
+	Attr    *attributes.Attributes
 	Hidden  bool
 
 	Type     string
@@ -109,8 +137,8 @@ type Input struct {
 	Disabled bool
 }
 
-func (i Input) Init(_ *Page) (Element, error) {
-	return &Tag{
+func (i Input) Init(_ *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "input",
 		Attrs: i.Attr.
 			String("id", i.ID).
@@ -127,14 +155,14 @@ func (i Input) Init(_ *Page) (Element, error) {
 type Header struct {
 	ID      string
 	Classes []string
-	Attr    *Attributes
+	Attr    *attributes.Attributes
 	Hidden  bool
 
 	Content Component
 }
 
-func (h Header) Init(p *Page) (Element, error) {
-	return &Tag{
+func (h Header) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "header",
 		Attrs: h.Attr.
 			String("id", h.ID).
@@ -148,14 +176,14 @@ func (h Header) Init(p *Page) (Element, error) {
 type Span struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Content Component
 }
 
-func (s Span) Init(p *Page) (Element, error) {
-	return &Tag{
+func (s Span) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "span",
 		Attrs: s.Attrs.
 			String("id", s.ID).
@@ -169,14 +197,14 @@ func (s Span) Init(p *Page) (Element, error) {
 type P struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Content Component
 }
 
-func (p P) Init(g *Page) (Element, error) {
-	return &Tag{
+func (p P) Init(g *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "p",
 		Attrs: p.Attrs.
 			String("id", p.ID).
@@ -190,15 +218,15 @@ func (p P) Init(g *Page) (Element, error) {
 type A struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Href    string
 	Content Component
 }
 
-func (a A) Init(p *Page) (Element, error) {
-	return &Tag{
+func (a A) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "a",
 		Attrs: a.Attrs.
 			String("id", a.ID).
@@ -213,15 +241,15 @@ func (a A) Init(p *Page) (Element, error) {
 type Img struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Src string
 	Alt string
 }
 
-func (img Img) Init(_ *Page) (Element, error) {
-	return &Tag{
+func (img Img) Init(_ *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "img",
 		Attrs: img.Attrs.
 			String("id", img.ID).
@@ -236,15 +264,15 @@ func (img Img) Init(_ *Page) (Element, error) {
 type H struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 	Level   int
 
 	Content Component
 }
 
-func (h H) Init(p *Page) (Element, error) {
-	return &Tag{
+func (h H) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: fmt.Sprintf("h%d", h.Level),
 		Attrs: h.Attrs.
 			String("id", h.ID).
@@ -258,19 +286,19 @@ func (h H) Init(p *Page) (Element, error) {
 type UL struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Items []LI
 }
 
-func (ul UL) Init(p *Page) (Element, error) {
-	items := make(Elements, len(ul.Items))
+func (ul UL) Init(p *Page) (element.Element, error) {
+	items := make(element.Fragment, len(ul.Items))
 	for i, item := range ul.Items {
 		items[i] = p.Init(item)
 	}
 
-	return &Tag{
+	return &element.Tag{
 		Name: "ul",
 		Attrs: ul.Attrs.
 			String("id", ul.ID).
@@ -284,19 +312,19 @@ func (ul UL) Init(p *Page) (Element, error) {
 type OL struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Items []LI
 }
 
-func (ol OL) Init(p *Page) (Element, error) {
-	items := make(Elements, len(ol.Items))
+func (ol OL) Init(p *Page) (element.Element, error) {
+	items := make(element.Fragment, len(ol.Items))
 	for i, item := range ol.Items {
 		items[i] = p.Init(item)
 	}
 
-	return &Tag{
+	return &element.Tag{
 		Name: "ol",
 		Attrs: ol.Attrs.
 			String("id", ol.ID).
@@ -310,38 +338,19 @@ func (ol OL) Init(p *Page) (Element, error) {
 type LI struct {
 	ID      string
 	Classes []string
-	Attrs   *Attributes
+	Attrs   *attributes.Attributes
 	Hidden  bool
 
 	Content Component
 }
 
-func (li LI) Init(p *Page) (Element, error) {
-	return &Tag{
+func (li LI) Init(p *Page) (element.Element, error) {
+	return &element.Tag{
 		Name: "li",
 		Attrs: li.Attrs.
 			String("id", li.ID).
 			Strings("class", li.Classes...).
 			Bool("hidden", li.Hidden),
 		Content: p.Init(li.Content),
-	}, nil
-}
-
-// CTag creates a html tag with the given name.
-type CTag struct {
-	Name    string
-	ID      string
-	Classes []string
-	Attrs   *Attributes
-	Content Component
-}
-
-func (c CTag) Init(p *Page) (Element, error) {
-	return &Tag{
-		Name: c.Name,
-		Attrs: c.Attrs.
-			String("id", c.ID).
-			Strings("class", c.Classes...),
-		Content: p.Init(c.Content),
 	}, nil
 }

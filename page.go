@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/TheWozard/gohtmx/element"
 )
 
 func NewPage() *Page {
@@ -63,19 +65,16 @@ func (p *Page) Build() (http.Handler, error) {
 }
 
 // Render creates a new http.Handler for the given element. This will run validation and rendering on the element.
-func (p *Page) Render(element Element) (http.Handler, error) {
-	if element == nil {
+func (p *Page) Render(e element.Element) (http.Handler, error) {
+	if e == nil {
 		return nil, fmt.Errorf("failed to create template handler: missing element")
 	}
-	err := element.Validate()
+	err := e.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate element: %w", err)
 	}
 	data := bytes.NewBuffer(nil)
-	err = Elements{
-		Raw("{{$r := .request}}"),
-		element,
-	}.Render(data)
+	err = element.Fragment{element.Raw("{{$r := .request}}"), e}.Render(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render element: %w", err)
 	}
@@ -92,14 +91,14 @@ func (p *Page) Render(element Element) (http.Handler, error) {
 
 // Init initializes a component and returns its created element. This handles the error without the Component from
 // having to. This is a convenience method for Components to use to initialize other components/contents.
-func (p *Page) Init(c Component) Element {
+func (p *Page) Init(c Component) element.Element {
 	if p != nil && c != nil {
-		element, err := c.Init(p)
+		e, err := c.Init(p)
 		if err != nil {
 			// We add the error into the Element Tree. This will get picked up during the validation stage.
-			return &RawError{Err: err}
+			return element.RawError{Err: err}
 		}
-		return element
+		return e
 	}
 	return nil
 }
@@ -139,6 +138,15 @@ func (p *Page) Use(middleware ...Middleware) {
 	p.Index[p.Path()] = request
 }
 
+type Handle func(*http.Request)
+
+func (p *Page) Handle(h Handle) {
+	if p == nil || h == nil {
+		return
+	}
+	p.Use(HandlerMiddleware(h).Middleware)
+}
+
 // Add adds a component to the request at this pages current path. This is when a Component is initialized through Init
 // into elements.
 func (p *Page) Add(component Component) {
@@ -150,9 +158,18 @@ func (p *Page) Add(component Component) {
 	p.Index[p.Path()] = request
 }
 
+type HandlerMiddleware func(*http.Request)
+
+func (h HandlerMiddleware) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h(r)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Request defines a single interactive endpoint.
 type Request struct {
-	Elements   Elements
+	Elements   element.Fragment
 	Middleware []Middleware
 }
 
