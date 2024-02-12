@@ -60,7 +60,7 @@ func TestElements(t *testing.T) {
 				element.RawError{Err: errors.New(`some error`)},
 				element.RawError{Err: errors.New(`another error`)},
 			},
-			validateErr: errors.Join(errors.Join(errors.New(`some error`)), errors.New(`another error`)),
+			validateErr: errors.Join(errors.New(`some error`), errors.New(`another error`)),
 			expected:    `some erroranother error`,
 			tags:        []*element.Tag{},
 		},

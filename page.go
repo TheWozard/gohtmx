@@ -2,6 +2,7 @@ package gohtmx
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -32,21 +33,64 @@ type Page struct {
 	Generator Generator
 }
 
+// Validate will validate all elements in the page. Each path is validated individually, and paths with errors are
+// returned in a map. If no errors are found, nil is returned.
+func (p *Page) Validate() map[string]error {
+	errors := make(map[string]error, len(p.Index))
+	for _, path := range p.paths() {
+		e := p.Index[path].Validate()
+		if e != nil {
+			errors[path] = e
+		}
+	}
+	if len(errors) > 0 {
+		return errors
+	}
+	return nil
+}
+
+// Render will render all elements in the page to a map of byte slices. Each path is rendered individually, and all
+// paths with data are returned in a map.
+func (p *Page) Render() (map[string]string, error) {
+	t := make(map[string]string, len(p.Index))
+	errs := make([]error, 0, len(p.Index))
+	for name, req := range p.Index {
+		raw, e := req.Render()
+		if e != nil {
+			errs = append(errs, e)
+		}
+		if len(raw) > 0 {
+			t[name] = string(raw)
+		}
+	}
+	return t, errors.Join(errs...)
+}
+
 // Build creates a new http.Handler for the entire page.
 func (p *Page) Build() (http.Handler, error) {
-	paths := make([]string, 0, len(p.Index))
-	for path := range p.Index {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-
+	paths := p.paths()
 	htmx := http.NewServeMux()
 	var page http.Handler
 	for _, path := range paths {
-		handler, err := p.Index[path].Handler(p)
+		request := p.Index[path]
+		err := request.Validate()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to validate request '%s': %w", path, err)
 		}
+		raw, err := request.Render()
+		if err != nil {
+			return nil, fmt.Errorf("failed to render request '%s': %w", path, err)
+		}
+		name := p.Generator.NewID("template")
+		p.Template, err = p.Template.New(name).Parse(string(raw))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse template '%s': %w", path, err)
+		}
+
+		handler := request.Wrap(&TemplateHandler{
+			Template: p.Template,
+			Name:     name,
+		})
 		if path == "/" {
 			page = handler
 		} else {
@@ -64,33 +108,17 @@ func (p *Page) Build() (http.Handler, error) {
 	}), nil
 }
 
-// Render creates a new http.Handler for the given element. This will run validation and rendering on the element.
-func (p *Page) Render(e element.Element) (http.Handler, error) {
-	if e == nil {
-		return nil, fmt.Errorf("failed to create template handler: missing element")
+func (p *Page) paths() []string {
+	paths := make([]string, 0, len(p.Index))
+	for path := range p.Index {
+		paths = append(paths, path)
 	}
-	err := e.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate element: %w", err)
-	}
-	data := bytes.NewBuffer(nil)
-	err = element.Fragment{element.Raw("{{$r := .request}}"), e}.Render(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to render element: %w", err)
-	}
-	name := p.Generator.NewID("template")
-	p.Template, err = p.Template.New(name).Parse(data.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse template: %w", err)
-	}
-	return &TemplateHandler{
-		Template: p.Template,
-		Name:     name,
-	}, nil
+	sort.Strings(paths)
+	return paths
 }
 
-// Init initializes a component and returns its created element. This handles the error without the Component from
-// having to. This is a convenience method for Components to use to initialize other components/contents.
+// Init initializes a component and returns its created element. This handles the error without having to return it.
+// This is a convenience method for Components to use to initialize other components/contents.
 func (p *Page) Init(c Component) element.Element {
 	if p != nil && c != nil {
 		e, err := c.Init(p)
@@ -173,15 +201,19 @@ type Request struct {
 	Middleware []Middleware
 }
 
-// Handler creates a new http.Handler for the request. This will run validation and rendering on the elements.
-func (r Request) Handler(p *Page) (http.Handler, error) {
-	var handler http.Handler
-	handler, err := p.Render(r.Elements)
-	if err != nil {
-		return nil, err
-	}
+func (r Request) Validate() error {
+	return r.Elements.Validate()
+}
+
+func (r Request) Render() ([]byte, error) {
+	data := bytes.NewBuffer(nil)
+	err := element.Fragment{element.Raw("{{$r := .request}}"), r.Elements}.Render(data)
+	return data.Bytes(), err
+}
+
+func (r Request) Wrap(handler http.Handler) http.Handler {
 	for _, middleware := range r.Middleware {
 		handler = middleware(handler)
 	}
-	return handler, nil
+	return handler
 }

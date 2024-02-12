@@ -32,13 +32,13 @@ func (f Fragment) Render(w io.Writer) error {
 }
 
 func (f Fragment) Validate() error {
-	var err error
+	errs := make([]error, 0, len(f))
 	for _, element := range f {
 		if element != nil {
-			err = errors.Join(err, element.Validate())
+			errs = append(errs, element.Validate())
 		}
 	}
-	return err
+	return errors.Join(errs...)
 }
 
 func (f Fragment) GetTags() []*Tag {
